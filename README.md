@@ -1,8 +1,9 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
-> **Status: preliminary.** This repository is at the planning stage. It contains no results
-> yet: every section below describes a hypothesis, a protocol, or a plan, and numbers quoted
-> from earlier work are labelled as such. The README will be rewritten as measurements come in.
+> **Status: preliminary.** The sampler is implemented and unit-tested; it has **not yet been
+> evaluated on a real model**. This repository contains no results: every section below
+> describes a hypothesis, a protocol, or a plan, and numbers quoted from earlier work are
+> labelled as such. The README will be rewritten as measurements come in.
 
 Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
 models at low NFE budgets (6–15 steps).
@@ -42,7 +43,7 @@ This is a different mechanism from `response` ≠ 0 and has not been tested. The
 relation (more noise on stiff steps or on smooth ones) is not known in advance and is part of
 what the experiments must determine.
 
-## Method (planned)
+## Method
 
 At each step `i` the sampler has already evaluated the model and holds the derivative
 `d_i = (x_i - denoised_i) / sigma_i`. Local curvature is
@@ -51,15 +52,16 @@ At each step `i` the sampler has already evaluated the model and holds the deriv
 kappa_i = rms(d_i - d_{i-1}) / |sigma_i - sigma_{i-1}|
 ```
 
-which is already computed by the Trajectory Probe of the previous work and costs **zero extra
-network evaluations**. The stochastic strength for the next step is
+which is the quantity recorded by the Trajectory Probe of the earlier work and costs **zero extra
+network evaluations**. The noise power for the step from `i` to `i+1` is
 
 ```
-tau_{i+1} = eta_bar * w(kappa_i, history) * base_window(sigma_{i+1})
+tau_i^2 = eta_bar^2 * w_i * c_i      inside the noise window, 0 outside
+w_i     = clamp((kappa_i / reference_i)^exponent, 1/spread, spread)
 ```
 
-where `w` is a normalised, bounded function of curvature relative to its running reference and
-`eta_bar` is the nominal strength. The control is causal: it uses only information available
+where `reference_i` is a running average of past curvature, `eta_bar` is the nominal strength, and
+`c_i` is a budget-conservation factor (see below). The control is causal: it uses only information available
 after the evaluation at step `i`.
 
 ### The control that matters: equal noise budget
@@ -71,20 +73,63 @@ log-SNR step). Only a gain at equal budget supports the redistribution hypothesi
 
 ### Variants to compare
 
-| Variant | Description |
+All variants are settings of the single `Flow-SDE Sampler` node (`signal`, `exponent`,
+`conserve_budget`); see [Implementation](#implementation).
+
+| Variant | Settings |
 | --- | --- |
-| `sa_solver` | ComfyUI baseline, `eta = 1.0`, window 0.2–0.8 |
-| `uniform` | Constant `eta` in 1.6–1.8 within window 0.2–0.8 (the tuned baseline from the earlier work) |
-| `uniform-matched` | Constant `eta` with budget matched to each adaptive run |
-| `static-profile` | Non-uniform `tau` schedule from the mean curvature profile, fixed across samples |
-| `curvature-online` | `tau` driven by live curvature (the proposed method) |
-| `curvature-online, inverted` | Same with the sign of the relation flipped |
-| `pc-error-online` | Direct error control (`response` ≠ 0) from the earlier work, for reference |
+| `sa_solver` | ComfyUI baseline; reproduced bit-for-bit at `eta = 1.0`, `exponent = 0` |
+| `uniform` | `exponent = 0`, `eta` 1.6–1.8 (the tuned baseline from the earlier work) |
+| `uniform-matched` | `exponent = 0`, `eta` set so that `eta^2 * sum(h)` equals the realised budget of an adaptive run. With `conserve_budget` on, this is simply `uniform` at the same `eta` |
+| `curvature-online` | `signal = curvature`, `exponent > 0` (more noise on stiff steps) |
+| `curvature-online, inverted` | `signal = curvature`, `exponent < 0` (more noise on smooth steps) |
+| `pc-error-online` | `signal = pc_error`, for reference against the earlier negative result |
+| `static-profile` | Non-uniform `tau` schedule from the mean curvature profile, fixed across samples. **Not implemented yet** |
 
 `static-profile` isolates whether *online* adaptation matters at all, or whether a fixed
 non-uniform schedule already captures the effect. The previous variance decomposition
-(`analyze_dumps.py`) measures how much of the signal is explained by step index alone versus
-instance-specific behaviour, and decides how much headroom online control can have.
+(`analyze_dumps.py` in the earlier repository) measures how much of the signal is explained by
+step index alone versus instance-specific behaviour, and decides how much headroom online
+control can have.
+
+## Implementation
+
+```
+noise_allocation.py   NoiseAllocator: per-step tau from a curvature / pc_error signal
+sampler.py            sample_flow_sde: SA-Solver loop with allocator-driven tau
+nodes.py              ComfyUI node "Flow-SDE Sampler"
+tests/                unit tests (pytest)
+```
+
+Install by cloning into `ComfyUI/custom_nodes/` and restarting ComfyUI. No extra dependencies.
+The node is found under `sampling/custom_sampling/flow_sde`.
+
+| Parameter | Meaning |
+| --- | --- |
+| `eta` | Nominal stochastic strength `eta_bar` |
+| `stochastic_start`, `stochastic_end` | Noise window, as in `sa_solver` (default 0.2–0.8) |
+| `signal` | `curvature` (free, from consecutive derivatives) or `pc_error` (free, predictor–corrector gap) |
+| `exponent` | Power applied to `signal / running_reference`. `0` disables adaptation; the sign selects stiff-heavy or smooth-heavy noise |
+| `conserve_budget` | Rescales later steps so that `sum(tau_i^2 * h_i)` over the window equals `eta^2 * sum(h_i)`. The last window step absorbs the remainder |
+| `spread` | Weight is clamped to `[1/spread, spread]` |
+| `smoothing` | EMA factor of the running reference |
+| `tau_max` | Hard cap on `tau` (clipping can leave part of the budget unspent) |
+
+The weight acts on the noise power `tau^2`, not on `tau`, because `tau^2 * h` is what the budget
+is measured in. Cost is exactly 1 NFE per step.
+
+### Tests
+
+```
+venv/Scripts/python.exe -m pytest custom_nodes/flow-sde-research/tests
+```
+
+Run from the ComfyUI root. The suite checks that `exponent = 0` reproduces `sa_solver`
+bit-for-bit at 6, 10 and 15 steps (maximum absolute difference `0`), that NFE equals the step
+count for adaptive runs, that the realised budget of a conserved run equals the uniform one, and
+the allocator's invariants (window, bounds, clipping, sign of the exponent). The sampler tests use
+a synthetic flow model, so they establish correctness of the mechanism and say nothing about image
+quality.
 
 ## Evaluation protocol
 
@@ -121,10 +166,10 @@ One of two directions will be chosen once the primary result is in:
 
 ## Relationship to the previous repository
 
-This repository is intended to build on the ComfyUI integration, trajectory probe, and analysis
-scripts of `adaptive-step-samplers`. Code will be brought in as needed rather than duplicated
-wholesale. The sampler is expected to remain bit-compatible with `sa_solver` when the adaptation
-is switched off.
+The SA-Solver loop in `sampler.py` is adapted from `sample_adaptive_sa` of
+`adaptive-step-samplers`, with the error-driven controller replaced by `NoiseAllocator`.
+The trajectory probe and analysis scripts are not copied; experiments are intended to use the
+probe from the earlier repository, installed alongside.
 
 ## Authors
 
