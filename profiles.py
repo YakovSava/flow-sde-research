@@ -110,6 +110,42 @@ def flux3_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
     }
 
 
+def moss_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
+    return {
+        "43": {
+            "class_type": "UNETLoader",
+            "inputs": {
+                "unet_name": "mossImage_sft_pruned_int8.safetensors",
+                "weight_dtype": "default",
+            },
+        },
+        "5": {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "mossImage_sft_txt_int8.safetensors",
+                "type": "moss_image",
+                "device": "default",
+            },
+        },
+        "37": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": prompt, "clip": ["5", 0]},
+        },
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "worst quality, bad anatomy", "clip": ["5", 0]},
+        },
+        "50": {
+            "class_type": "EmptyFlux2LatentImage",
+            "inputs": {"width": profile.width, "height": profile.height, "batch_size": 1},
+        },
+        "28": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "flux2-vae.safetensors"},
+        },
+    }
+
+
 ANIMA: Profile = Profile(
     name="anima",
     subdir="flow_sde",
@@ -143,5 +179,20 @@ FLUX3: Profile = Profile(
     },
 )
 
-PROFILES: dict[str, Profile] = {ANIMA.name: ANIMA, FLUX3.name: FLUX3}
-NODE_BUILDERS: dict[str, Any] = {ANIMA.name: anima_nodes, FLUX3.name: flux3_nodes}
+MOSS: Profile = Profile(
+    name="moss",
+    subdir="flow_sde_moss",
+    width=768,
+    height=1024,
+    cfg=3.0,
+    pool=4,
+    scheduler="normal",
+    prompts=FLUX3.prompts,
+)
+
+PROFILES: dict[str, Profile] = {ANIMA.name: ANIMA, FLUX3.name: FLUX3, MOSS.name: MOSS}
+NODE_BUILDERS: dict[str, Any] = {
+    ANIMA.name: anima_nodes,
+    FLUX3.name: flux3_nodes,
+    MOSS.name: moss_nodes,
+}
