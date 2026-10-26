@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.bak
+*~
+*.swp
+*.swo
+
+# Output and experimental dumps
+output/
+dumps/
+exp/
+*.safetensors
+*.png
+*.jpg
+*.jpeg
+
+# Environments and IDEs
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+.idea/
