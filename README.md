@@ -1,10 +1,10 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
 > **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
-> `sa_solver` bit-for-bit on Anima through ComfyUI. The comparison experiments have **not been
-> run yet**. This repository contains no results: every section below
-> describes a hypothesis, a protocol, or a plan, and numbers quoted from earlier work are
-> labelled as such. The README will be rewritten as measurements come in.
+> `sa_solver` bit-for-bit on Anima through ComfyUI. One small first-stage experiment has been
+> run (10 NFE, 16 samples) and shows **no detectable effect** yet; see
+> [Preliminary results](#preliminary-results). Everything else below is a hypothesis, a protocol,
+> or a plan, and numbers quoted from earlier work are labelled as such.
 
 Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
 models at low NFE budgets (6–15 steps).
