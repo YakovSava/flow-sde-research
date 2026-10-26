@@ -104,6 +104,8 @@ nodes.py              ComfyUI node "Flow-SDE Sampler"
 metrics.py            geometry / texture metrics, frontier advantage, bootstrap
 profiles.py           per-model graph, resolution, cfg, metric pooling
 run_experiment.py     drives ComfyUI over its HTTP API and reports the comparison
+export_results.py     writes every per-sample metric and the summary table to results/
+results/              samples.csv (one row per image) and summary.csv (one row per model, NFE, variant)
 tests/                unit tests (pytest)
 ```
 
@@ -157,6 +159,18 @@ variant's texture and the texture a uniform-`eta` sampler (`uniform_e14`, `unifo
 confidence interval over (prompt, seed) pairs. A variant that merely moves along the `eta` curve
 scores zero; a better trade-off scores above zero. A variant whose geometry falls outside the
 range of the uniform runs is reported as `n/a`.
+
+### Saved metrics
+
+`results/samples.csv` holds one row per generated image (model, ComfyUI version, variant, prompt,
+seed, NFE, geometry, texture, texture gap, geometry reference type). `results/summary.csv` holds
+the per-(model, NFE, variant) means and the texture advantage over the uniform frontier with its
+95 % bootstrap interval. Regenerate both from the saved latents with
+`venv/Scripts/python.exe custom_nodes/flow-sde-research/export_results.py`. Intervals in the
+CSV can differ from the README tables in the last digit, because the bootstrap resamples pairs in
+a different order; point estimates are identical. Anima rows come from ComfyUI 0.31.1 and the
+others from 0.42.5 (the `comfyui_version` column), and the Flux 3 `geometry` column is relative to
+the same-budget `euler` run while the other two are relative to the 100-step run.
 
 Measured cost on an RTX 5060 (8 GB) at 768×1024, cfg 5: roughly 6–7 s per step. A 100-step
 geometry reference takes about 11 min and a 30-step texture reference about 4 min per
