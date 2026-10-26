@@ -11,33 +11,26 @@ import numpy as np
 from safetensors import safe_open
 
 from metrics import bootstrap, geometry_error, texture_advantage, texture_energy
+from profiles import (
+    LATENT_REF,
+    MODEL_REF,
+    NEGATIVE_REF,
+    NODE_BUILDERS,
+    POSITIVE_REF,
+    PROFILES,
+    VAE_REF,
+    SAME_BUDGET,
+    Profile,
+)
 
 SERVER: str = "http://127.0.0.1:8188"
 OUTPUT: pathlib.Path = pathlib.Path("D:/ComfyUI/output")
-SUBDIR: str = "flow_sde"
 
-MODEL: str = "anima_aestheticV11(1).safetensors"
-LORA: str = "firedotinc-anima-new.safetensors"
-TEXT_ENCODER: str = "anima_baseV10_txt.safetensors"
-VAE: str = "qwenImage_qwenImageVAE.safetensors"
-TRIGGER: str = "@firedotinc"
-NEGATIVE: str = "worst quality, low quality,"
-WIDTH: int = 768
-HEIGHT: int = 1024
-CFG: float = 5.0
-
-PROMPTS: dict[str, str] = {
-    "flat": "1girl, flat color illustration, plain pastel background, simple shading",
-    "face": "extreme close-up portrait of a girl's face, soft skin, detailed eyes",
-    "fur": "dense forest foliage, fur texture, thousands of leaves",
-    "grid": "checkerboard tiled floor, perspective grid, geometric architecture",
-}
 DEFAULT_SEEDS: list[int] = [42, 1337, 7, 2024, 31337, 99, 555, 8086]
 DEFAULT_BUDGETS: list[int] = [6, 8, 10, 12, 15]
 GEOMETRY_REFERENCE_STEPS: int = 100
 TEXTURE_REFERENCE_STEPS: int = 30
 ETA: float = 1.7
-BASELINE: str = "uniform_e17"
 FRONTIER: list[str] = ["uniform_e14", "uniform_e17", "uniform_e20"]
 
 
@@ -99,7 +92,7 @@ def request(path: str, payload: dict[str, Any] | None = None) -> Any:
         return json.loads(response.read())
 
 
-def build_graph(job: Job) -> dict[str, Any]:
+def build_graph(job: Job, profile: Profile) -> dict[str, Any]:
     variant = VARIANTS[job.variant]
     if variant.sampler_name is not None:
         sampler = {
@@ -111,75 +104,54 @@ def build_graph(job: Job) -> dict[str, Any]:
             "class_type": "FlowSDESampler",
             "inputs": {**FLOW_SDE_DEFAULTS, **variant.settings},
         }
-    return {
-        "1": {
-            "class_type": "AnimaBoosterLoader",
-            "inputs": {"model_name": MODEL, "sage_attention": "auto", "torch_compile": False},
-        },
-        "43": {
-            "class_type": "LoraLoaderModelOnly",
-            "inputs": {"lora_name": LORA, "strength_model": 1, "model": ["1", 0]},
-        },
-        "5": {
-            "class_type": "CLIPLoader",
-            "inputs": {"clip_name": TEXT_ENCODER, "type": "stable_diffusion", "device": "default"},
-        },
-        "37": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": f"{TRIGGER}, {PROMPTS[job.prompt]}", "clip": ["5", 0]},
-        },
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": NEGATIVE, "clip": ["5", 0]},
-        },
-        "50": {
-            "class_type": "AnimaLatentImage",
-            "inputs": {"preset": "Custom", "width": WIDTH, "height": HEIGHT, "batch_size": 1},
-        },
-        "51": {
-            "class_type": "BasicScheduler",
-            "inputs": {
-                "scheduler": "normal",
-                "steps": job.steps,
-                "denoise": 1,
-                "model": ["43", 0],
+    graph = NODE_BUILDERS[profile.name](profile, profile.prompts[job.prompt])
+    graph.update(
+        {
+            "51": {
+                "class_type": "BasicScheduler",
+                "inputs": {
+                    "scheduler": profile.scheduler,
+                    "steps": job.steps,
+                    "denoise": 1,
+                    "model": MODEL_REF,
+                },
             },
-        },
-        "52": sampler,
-        "54": {
-            "class_type": "SamplerCustom",
-            "inputs": {
-                "add_noise": True,
-                "noise_seed": job.seed,
-                "cfg": CFG,
-                "model": ["43", 0],
-                "positive": ["37", 0],
-                "negative": ["6", 0],
-                "sampler": ["52", 0],
-                "sigmas": ["51", 0],
-                "latent_image": ["50", 0],
+            "52": sampler,
+            "54": {
+                "class_type": "SamplerCustom",
+                "inputs": {
+                    "add_noise": True,
+                    "noise_seed": job.seed,
+                    "cfg": profile.cfg,
+                    "model": MODEL_REF,
+                    "positive": POSITIVE_REF,
+                    "negative": NEGATIVE_REF,
+                    "sampler": ["52", 0],
+                    "sigmas": ["51", 0],
+                    "latent_image": LATENT_REF,
+                },
             },
-        },
-        "28": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
-        "27": {"class_type": "VAEDecode", "inputs": {"samples": ["54", 0], "vae": ["28", 0]}},
-        "12": {
-            "class_type": "SaveImage",
-            "inputs": {"filename_prefix": f"{SUBDIR}/{job.tag}", "images": ["27", 0]},
-        },
-        "13": {
-            "class_type": "SaveLatent",
-            "inputs": {"filename_prefix": f"{SUBDIR}/{job.tag}", "samples": ["54", 0]},
-        },
-    }
+            "27": {"class_type": "VAEDecode", "inputs": {"samples": ["54", 0], "vae": VAE_REF}},
+            "12": {
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": f"{profile.subdir}/{job.tag}", "images": ["27", 0]},
+            },
+            "13": {
+                "class_type": "SaveLatent",
+                "inputs": {"filename_prefix": f"{profile.subdir}/{job.tag}", "samples": ["54", 0]},
+            },
+        }
+    )
+    return graph
 
 
-def latent_path(tag: str) -> pathlib.Path | None:
-    matches = sorted((OUTPUT / SUBDIR).glob(f"{tag}_[0-9][0-9][0-9][0-9][0-9]_.latent"))
+def latent_path(tag: str, profile: Profile) -> pathlib.Path | None:
+    matches = sorted((OUTPUT / profile.subdir).glob(f"{tag}_[0-9][0-9][0-9][0-9][0-9]_.latent"))
     return matches[-1] if matches else None
 
 
-def load_latent(tag: str) -> np.ndarray | None:
-    path = latent_path(tag)
+def load_latent(tag: str, profile: Profile) -> np.ndarray | None:
+    path = latent_path(tag, profile)
     if path is None:
         return None
     with safe_open(str(path), "pt") as handle:
@@ -204,23 +176,26 @@ def tag_for(variant: str, prompt: str, seed: int, steps: int) -> str:
 
 
 def plan_jobs(
+    profile: Profile,
     prompts: list[str],
     seeds: list[int],
     budgets: list[int],
     variants: list[str],
 ) -> list[Job]:
+    same_budget = profile.geometry_reference == SAME_BUDGET
     jobs: list[Job] = []
     for prompt in prompts:
         for seed in seeds:
-            jobs.append(
-                Job(
-                    tag_for("ode", prompt, seed, GEOMETRY_REFERENCE_STEPS),
-                    prompt,
-                    seed,
-                    GEOMETRY_REFERENCE_STEPS,
-                    "ode",
+            if not same_budget:
+                jobs.append(
+                    Job(
+                        tag_for("ode", prompt, seed, GEOMETRY_REFERENCE_STEPS),
+                        prompt,
+                        seed,
+                        GEOMETRY_REFERENCE_STEPS,
+                        "ode",
+                    )
                 )
-            )
             jobs.append(
                 Job(
                     tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS),
@@ -231,19 +206,20 @@ def plan_jobs(
                 )
             )
             for steps in budgets:
-                for variant in variants:
+                needed = variants if "ode" in variants or not same_budget else ["ode"] + variants
+                for variant in needed:
                     jobs.append(Job(tag_for(variant, prompt, seed, steps), prompt, seed, steps, variant))
     return jobs
 
 
-def run_jobs(jobs: list[Job]) -> None:
-    pending = [job for job in jobs if latent_path(job.tag) is None]
+def run_jobs(jobs: list[Job], profile: Profile) -> None:
+    pending = [job for job in jobs if latent_path(job.tag, profile) is None]
     print(f"{len(jobs)} jobs, {len(pending)} to run")
     started = time.time()
     for position, job in enumerate(pending, start=1):
         began = time.time()
         try:
-            prompt_id = request("/prompt", {"prompt": build_graph(job)})["prompt_id"]
+            prompt_id = request("/prompt", {"prompt": build_graph(job, profile)})["prompt_id"]
         except urllib.error.HTTPError as error:
             print(f"  [{position}/{len(pending)}] {job.tag}: rejected {error.read()[:300]!r}")
             continue
@@ -254,6 +230,7 @@ def run_jobs(jobs: list[Job]) -> None:
 
 
 def collect(
+    profile: Profile,
     prompts: list[str],
     seeds: list[int],
     steps: int,
@@ -264,15 +241,17 @@ def collect(
     gap: dict[str, list[float]] = {name: [] for name in variants}
     for prompt in prompts:
         for seed in seeds:
-            reference = load_latent(tag_for("ode", prompt, seed, GEOMETRY_REFERENCE_STEPS))
-            converged = load_latent(tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS))
-            latents = {name: load_latent(tag_for(name, prompt, seed, steps)) for name in variants}
+            same_budget = profile.geometry_reference == SAME_BUDGET
+            reference_steps = steps if same_budget else GEOMETRY_REFERENCE_STEPS
+            reference = load_latent(tag_for("ode", prompt, seed, reference_steps), profile)
+            converged = load_latent(tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS), profile)
+            latents = {name: load_latent(tag_for(name, prompt, seed, steps), profile) for name in variants}
             if reference is None or converged is None or any(v is None for v in latents.values()):
                 continue
-            target = texture_energy(converged)
+            target = texture_energy(converged, profile.pool)
             for name, latent in latents.items():
-                geometry[name].append(geometry_error(latent, reference))
-                energy = texture_energy(latent)
+                geometry[name].append(geometry_error(latent, reference, profile.pool))
+                energy = texture_energy(latent, profile.pool)
                 texture[name].append(energy)
                 gap[name].append(energy - target)
     return {
@@ -289,6 +268,7 @@ def format_interval(point: float, low: float, high: float) -> str:
 
 
 def report(
+    profile: Profile,
     prompts: list[str],
     seeds: list[int],
     budgets: list[int],
@@ -296,7 +276,7 @@ def report(
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for steps in budgets:
-        data = collect(prompts, seeds, steps, variants)
+        data = collect(profile, prompts, seeds, steps, variants)
         count = min(len(values) for values in data["geometry"].values())
         if count == 0:
             continue
@@ -332,7 +312,8 @@ def report(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--prompts", nargs="+", default=list(PROMPTS), choices=list(PROMPTS))
+    parser.add_argument("--model", default="anima", choices=list(PROFILES))
+    parser.add_argument("--prompts", nargs="+", default=None)
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--budgets", nargs="+", type=int, default=DEFAULT_BUDGETS)
     parser.add_argument("--variants", nargs="+", default=list(VARIANTS), choices=list(VARIANTS))
@@ -340,10 +321,13 @@ def main() -> None:
     parser.add_argument("--report", type=pathlib.Path)
     arguments = parser.parse_args()
 
-    if not arguments.analyse_only:
-        run_jobs(plan_jobs(arguments.prompts, arguments.seeds, arguments.budgets, arguments.variants))
+    profile = PROFILES[arguments.model]
+    prompts = arguments.prompts or list(profile.prompts)
 
-    summary = report(arguments.prompts, arguments.seeds, arguments.budgets, arguments.variants)
+    if not arguments.analyse_only:
+        run_jobs(plan_jobs(profile, prompts, arguments.seeds, arguments.budgets, arguments.variants), profile)
+
+    summary = report(profile, prompts, arguments.seeds, arguments.budgets, arguments.variants)
     if arguments.report is not None:
         arguments.report.write_text(json.dumps(summary), encoding="utf-8")
 
