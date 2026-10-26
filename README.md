@@ -7,6 +7,20 @@
 > at every budget. See [Preliminary results](#preliminary-results). Everything else below is a
 > hypothesis, a protocol, or a plan, and numbers quoted from earlier work are labelled as such.
 
+Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
+models at low NFE budgets (6–15 steps).
+
+This is a follow-up to two earlier pieces of work, both published in
+[adaptive-step-samplers](https://github.com/YakovSava/adaptive-step-samplers)
+([DOI](https://doi.org/10.5281/zenodo.23529356)):
+
+1. A free local error estimate from the predictor–corrector gap, used for adaptive step size.
+2. Exposed SA-Solver stochastic strength, including error-driven noise control
+   (`response` ≠ 0), which turned out to be a negative result.
+
+This repository tests a different mechanism: noise distributed over steps according to local
+trajectory curvature.
+
 ## Motivation
 
 ComfyUI's `sa_solver` pins the stochastic strength to a constant `eta = 1.0` inside a fixed
