@@ -2,7 +2,7 @@
 
 > **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
 > `sa_solver` bit-for-bit on Anima through ComfyUI. One small first-stage experiment has been
-> run (10 NFE, 16 samples) and shows **no detectable effect** yet; see
+> run (6–15 NFE, 16 samples per budget) and shows **no robust effect**; see
 > [Preliminary results](#preliminary-results). Everything else below is a hypothesis, a protocol,
 > or a plan, and numbers quoted from earlier work are labelled as such.
 
@@ -177,9 +177,9 @@ The protocol follows the earlier work so the numbers stay comparable.
 
 ## Preliminary results
 
-Stage A: Anima, 768×1024, cfg 5.0, `normal` scheduler, **10 NFE**, 4 prompt classes × 4 seeds
-(16 samples, paired). Geometry is measured against a 100-step `euler` reference, texture against
-a 30-step `sa_solver`. Adaptive variants use `eta_bar = 1.7`, `exponent = ±1`, budget conserved.
+Setup: Anima, 768×1024, cfg 5.0, `normal` scheduler, 4 prompt classes × 4 seeds (16 paired
+samples) at each of 6, 8, 10, 12 and 15 NFE. The detailed table below is the 10 NFE budget. Geometry is measured against a 100-step `euler`
+reference, texture against a 30-step `sa_solver`. Adaptive variants use `eta_bar = 1.7`, `exponent = ±1`, budget conserved.
 
 | Variant | Geometry | Texture | Texture vs uniform frontier (95 % CI) |
 | --- | --- | --- | --- |
@@ -193,21 +193,44 @@ a 30-step `sa_solver`. Adaptive variants use `eta_bar = 1.7`, `exponent = ±1`, 
 | `pce_p1` (`pc_error`, +1) | 0.9415 | 0.5374 | −0.0017 [−0.0120, +0.0068] |
 | `pce_m1` (`pc_error`, −1) | 0.8988 | 0.5197 | +0.0086 [−0.0017, +0.0214] |
 
-**Reading.** Every confidence interval contains zero, so at this sample size none of the adaptive
-variants is distinguishable from simply moving along the uniform-`eta` curve. The point estimates
-for the inverted (smooth-heavy) variants are the only ones that lean positive, and the largest,
-+0.0086 texture units, is about a fifth of the texture gained by raising uniform `eta` from 1.4 to
-1.7. The interval half-width is about 0.012, so an effect of this size would need roughly four
-times more samples to resolve. This is a null result at n = 16, not evidence of absence.
+**Texture advantage over the uniform frontier at every budget** (point estimate and 95 % CI;
+positive means a better geometry/texture trade-off than uniform `eta`, `*` marks an interval that
+excludes zero):
+
+| Variant | 6 NFE | 8 NFE | 10 NFE | 12 NFE | 15 NFE |
+| --- | --- | --- | --- | --- | --- |
+| `curv_p1` | +0.0015 [−0.0008, +0.0037] | −0.0057 [−0.0139, +0.0024] | −0.0000 [−0.0105, +0.0126] | +0.0092 [−0.0136, +0.0271] | −0.0110 [−0.0341, +0.0136] |
+| `curv_m1` | −0.0015 [−0.0034, −0.0001] * | +0.0003 [−0.0045, +0.0055] | +0.0075 [−0.0023, +0.0182] | −0.0013 [−0.0182, +0.0118] | −0.0031 [−0.0226, +0.0140] |
+| `pce_p1` | +0.0013 [−0.0033, +0.0050] | −0.0022 [−0.0119, +0.0058] | −0.0017 [−0.0120, +0.0068] | +0.0058 [−0.0242, +0.0283] | +0.0074 [−0.0224, +0.0344] |
+| `pce_m1` | +0.0084 [+0.0017, +0.0171] * | −0.0038 [−0.0117, +0.0077] | +0.0086 [−0.0017, +0.0214] | −0.0012 [−0.0150, +0.0113] | −0.0162 [−0.0407, +0.0062] |
+
+**Reading.** There is no robust effect. Of 20 comparisons (4 variants × 5 budgets), 18 intervals
+contain zero. The two that do not are at 6 NFE and have opposite signs (`pce_m1` positive,
+`curv_m1` marginally negative, upper bound −0.0001); with 20 uncorrected tests about one such
+excursion is expected by chance. Signs are not consistent across budgets for any variant, and the
+interval half-width grows from about 0.002–0.008 at 6 NFE to about 0.02–0.03 at 15 NFE.
+
+The curvature hypothesis, in the form tested here, is **not supported**: redistributing a fixed
+noise budget by local curvature, in either direction, did not improve the geometry/texture
+trade-off over uniform `eta` at 6–15 NFE on Anima. The only candidate worth a follow-up is
+`pce_m1` at the lowest budget (+0.0084, about half of the texture range spanned by uniform `eta`
+1.4–2.0 at 6 NFE), because it is the one result that survives its own interval; it needs more
+samples before it can be called real.
 
 Caveats:
 
-- A single budget (10 NFE) and a single `eta_bar`; the 6–15 NFE sweep has not been run.
+- One `eta_bar` (1.7), `exponent = ±1`, and the weight clamped to `[1/3, 3]`. A stronger
+  perturbation, a different base `eta`, or a different reference (`smoothing`) may behave
+  differently; none were tried.
+- A negative result at n = 16 only excludes effects larger than the interval half-width (about
+  0.002–0.03 texture units depending on the budget and variant).
 - Absolute geometry values are about 2.3× larger than those quoted in the earlier work for the
   same samplers, although the ordering (`euler` worse than `sa_solver`) is the same. The metric
   settings or reference have likely changed between the two code bases; do not compare absolute
   numbers across the two repositories.
 - `ode` at 10 steps is shown for reference only and is outside the frontier range.
+- Geometry and texture are latent-space proxies that have not been validated against human
+  judgement.
 
 ## Secondary objective
 
