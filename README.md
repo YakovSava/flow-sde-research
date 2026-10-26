@@ -175,6 +175,40 @@ The protocol follows the earlier work so the numbers stay comparable.
 - **Reporting:** means with confidence intervals; a difference is claimed only when it exceeds
   the seed-to-seed spread. Negative results are reported.
 
+## Preliminary results
+
+Stage A: Anima, 768×1024, cfg 5.0, `normal` scheduler, **10 NFE**, 4 prompt classes × 4 seeds
+(16 samples, paired). Geometry is measured against a 100-step `euler` reference, texture against
+a 30-step `sa_solver`. Adaptive variants use `eta_bar = 1.7`, `exponent = ±1`, budget conserved.
+
+| Variant | Geometry | Texture | Texture vs uniform frontier (95 % CI) |
+| --- | --- | --- | --- |
+| `ode` (euler) | 0.8162 | 0.2654 | n/a |
+| `sa_solver` (= uniform, eta 1.0) | 0.8036 | 0.4478 | n/a |
+| `uniform` eta 1.4 | 0.8699 | 0.4919 | frontier |
+| `uniform` eta 1.7 | 0.9299 | 0.5318 | frontier |
+| `uniform` eta 2.0 | 1.0049 | 0.5795 | frontier |
+| `curv_p1` (more noise on stiff steps) | 0.9045 | 0.5149 | −0.0000 [−0.0105, +0.0126] |
+| `curv_m1` (more noise on smooth steps) | 0.9360 | 0.5432 | +0.0075 [−0.0023, +0.0182] |
+| `pce_p1` (`pc_error`, +1) | 0.9415 | 0.5374 | −0.0017 [−0.0120, +0.0068] |
+| `pce_m1` (`pc_error`, −1) | 0.8988 | 0.5197 | +0.0086 [−0.0017, +0.0214] |
+
+**Reading.** Every confidence interval contains zero, so at this sample size none of the adaptive
+variants is distinguishable from simply moving along the uniform-`eta` curve. The point estimates
+for the inverted (smooth-heavy) variants are the only ones that lean positive, and the largest,
++0.0086 texture units, is about a fifth of the texture gained by raising uniform `eta` from 1.4 to
+1.7. The interval half-width is about 0.012, so an effect of this size would need roughly four
+times more samples to resolve. This is a null result at n = 16, not evidence of absence.
+
+Caveats:
+
+- A single budget (10 NFE) and a single `eta_bar`; the 6–15 NFE sweep has not been run.
+- Absolute geometry values are about 2.3× larger than those quoted in the earlier work for the
+  same samplers, although the ordering (`euler` worse than `sa_solver`) is the same. The metric
+  settings or reference have likely changed between the two code bases; do not compare absolute
+  numbers across the two repositories.
+- `ode` at 10 steps is shown for reference only and is outside the frontier range.
+
 ## Secondary objective
 
 One of two directions will be chosen once the primary result is in:
