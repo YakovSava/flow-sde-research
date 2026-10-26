@@ -1,7 +1,8 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
-> **Status: preliminary.** The sampler is implemented and unit-tested; it has **not yet been
-> evaluated on a real model**. This repository contains no results: every section below
+> **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
+> `sa_solver` bit-for-bit on Anima through ComfyUI. The comparison experiments have **not been
+> run yet**. This repository contains no results: every section below
 > describes a hypothesis, a protocol, or a plan, and numbers quoted from earlier work are
 > labelled as such. The README will be rewritten as measurements come in.
 
@@ -98,6 +99,8 @@ control can have.
 noise_allocation.py   NoiseAllocator: per-step tau from a curvature / pc_error signal
 sampler.py            sample_flow_sde: SA-Solver loop with allocator-driven tau
 nodes.py              ComfyUI node "Flow-SDE Sampler"
+metrics.py            geometry / texture metrics, frontier advantage, bootstrap
+run_experiment.py     drives ComfyUI over its HTTP API and reports the comparison
 tests/                unit tests (pytest)
 ```
 
@@ -131,6 +134,31 @@ the allocator's invariants (window, bounds, clipping, sign of the exponent). The
 a synthetic flow model, so they establish correctness of the mechanism and say nothing about image
 quality.
 
+### Running the experiment
+
+With ComfyUI running (and the model, LoRA, text encoder and VAE names at the top of
+`run_experiment.py` adjusted to your installation):
+
+```
+venv/Scripts/python.exe custom_nodes/flow-sde-research/run_experiment.py     --prompts flat face --seeds 42 1337 --budgets 10 --variants sa_solver uniform_e17 curv_p1
+```
+
+Latents and images are written to `output/flow_sde/`; finished jobs are skipped, so an
+interrupted run resumes. `--analyse-only` recomputes the report from existing files and
+`--report FILE` stores per-sample metrics as JSON.
+
+The report gives mean geometry, texture, and the texture gap to a converged 30-step reference for
+every variant, plus the **texture advantage over the uniform frontier**: the difference between a
+variant's texture and the texture a uniform-`eta` sampler (`uniform_e14`, `uniform_e17`,
+`uniform_e20`) would have at the same geometry, linearly interpolated, with a 95 % bootstrap
+confidence interval over (prompt, seed) pairs. A variant that merely moves along the `eta` curve
+scores zero; a better trade-off scores above zero. A variant whose geometry falls outside the
+range of the uniform runs is reported as `n/a`.
+
+Measured cost on an RTX 5060 (8 GB) at 768×1024, cfg 5: roughly 6–7 s per step. A 100-step
+geometry reference takes about 11 min and a 30-step texture reference about 4 min per
+(prompt, seed), which dominates the cost of the experiment.
+
 ## Evaluation protocol
 
 The protocol follows the earlier work so the numbers stay comparable.
@@ -140,7 +168,8 @@ The protocol follows the earlier work so the numbers stay comparable.
 - **Geometry** (lower is better): RMS deviation from a 100-step `euler` reference after 8×
   average pooling in latent space.
 - **Texture:** RMS of the high-pass residual (latent minus its 8× pooled version). Reported both
-  absolute and as the gap to a converged 30-step SDE reference.
+  absolute and as the gap to a converged reference, here a 30-step `sa_solver` (the earlier work
+  averaged six stochastic samplers, so absolute gaps are not directly comparable).
 - **Prompts and seeds:** the four prompt classes of the earlier work (flat, face, fur, grid), with more
   seeds than the original 2 so that differences can be tested against seed-to-seed variance.
 - **Reporting:** means with confidence intervals; a difference is claimed only when it exceeds
