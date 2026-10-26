@@ -1,24 +1,11 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
 > **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
-> `sa_solver` bit-for-bit on Anima through ComfyUI. One small first-stage experiment has been
-> run (6–15 NFE, 16 samples per budget) and shows **no robust effect**; see
-> [Preliminary results](#preliminary-results). Everything else below is a hypothesis, a protocol,
-> or a plan, and numbers quoted from earlier work are labelled as such.
-
-Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
-models at low NFE budgets (6–15 steps).
-
-This is a follow-up to two earlier pieces of work, both published in
-[adaptive-step-samplers](https://github.com/YakovSava/adaptive-step-samplers)
-([DOI](https://doi.org/10.5281/zenodo.23529356)):
-
-1. A free local error estimate from the predictor–corrector gap, used for adaptive step size.
-2. Exposed SA-Solver stochastic strength, including error-driven noise control
-   (`response` ≠ 0), which turned out to be a negative result.
-
-This repository tests a different mechanism: noise distributed over steps according to local
-trajectory curvature.
+> `sa_solver` bit-for-bit through ComfyUI on two models. On **Anima** the curvature-driven
+> allocation shows **no robust effect**. On **Flux 3 Klein** the picture differs: curvature is
+> inconsistent, but error-driven allocation (`signal = pc_error`) shows a sign-consistent effect
+> at every budget. See [Preliminary results](#preliminary-results). Everything else below is a
+> hypothesis, a protocol, or a plan, and numbers quoted from earlier work are labelled as such.
 
 ## Motivation
 
@@ -100,6 +87,7 @@ noise_allocation.py   NoiseAllocator: per-step tau from a curvature / pc_error s
 sampler.py            sample_flow_sde: SA-Solver loop with allocator-driven tau
 nodes.py              ComfyUI node "Flow-SDE Sampler"
 metrics.py            geometry / texture metrics, frontier advantage, bootstrap
+profiles.py           per-model graph, resolution, cfg, metric pooling
 run_experiment.py     drives ComfyUI over its HTTP API and reports the comparison
 tests/                unit tests (pytest)
 ```
@@ -136,14 +124,14 @@ quality.
 
 ### Running the experiment
 
-With ComfyUI running (and the model, LoRA, text encoder and VAE names at the top of
-`run_experiment.py` adjusted to your installation):
+With ComfyUI running (and the model, LoRA, text encoder and VAE names in `profiles.py` adjusted to
+your installation). `--model` selects the profile (`anima` by default, or `flux3`):
 
 ```
 venv/Scripts/python.exe custom_nodes/flow-sde-research/run_experiment.py     --prompts flat face --seeds 42 1337 --budgets 10 --variants sa_solver uniform_e17 curv_p1
 ```
 
-Latents and images are written to `output/flow_sde/`; finished jobs are skipped, so an
+Latents and images are written to `output/flow_sde/` (`output/flow_sde_flux3/` for Flux 3); finished jobs are skipped, so an
 interrupted run resumes. `--analyse-only` recomputes the report from existing files and
 `--report FILE` stores per-sample metrics as JSON.
 
@@ -163,19 +151,35 @@ geometry reference takes about 11 min and a 30-step texture reference about 4 mi
 
 The protocol follows the earlier work so the numbers stay comparable.
 
-- **Model:** Anima (flow-matching DiT), 768×1024, cfg 5.0, `normal` scheduler.
+- **Models:** Anima (flow-matching DiT), 768×1024, cfg 5.0, `normal` scheduler; and Flux 3 Klein
+  (int8 checkpoint), 768×1024, cfg 1.0, `normal` scheduler, FLUX.2 VAE (see the Flux 3 profile
+  below).
 - **Budgets:** 6, 8, 10, 12, 15 NFE, 1 NFE per step samplers only.
-- **Geometry** (lower is better): RMS deviation from a 100-step `euler` reference after 8×
-  average pooling in latent space.
+- **Geometry** (lower is better): RMS deviation from a reference after average pooling in latent
+  space (8× for Anima). For Anima the reference is a 100-step `euler` run.
 - **Texture:** RMS of the high-pass residual (latent minus its 8× pooled version). Reported both
   absolute and as the gap to a converged reference, here a 30-step `sa_solver` (the earlier work
   averaged six stochastic samplers, so absolute gaps are not directly comparable).
 - **Prompts and seeds:** the four prompt classes of the earlier work (flat, face, fur, grid), with more
   seeds than the original 2 so that differences can be tested against seed-to-seed variance.
+- **Flux 3 profile.** Two deliberate departures from the Anima protocol:
+  1. *Geometry reference.* The 100-step `euler` run is **not** a converged reference for this
+     checkpoint: ODE results at 10 and 100 steps differ about as much as unrelated images
+     (pooled RMS 0.51 for one prompt and 0.54 for another, against 0.016 between 50 and 100 steps
+     on the second), because the composition changes with the step count. This is consistent
+     with a step-distilled checkpoint, which is an inference from the sampling behaviour and not
+     something confirmed from the model card. Geometry is therefore measured against the
+     deterministic `euler` run **at the same step count and seed**, i.e. it is the deviation
+     caused by the noise, not an error against a limit. Flux 3 geometry values are not comparable
+     with Anima's.
+  2. *Pooling.* The FLUX.2 latent has a 16× spatial downsampling instead of 8×, so pooling is 4×
+     to keep the same pixel footprint.
 - **Reporting:** means with confidence intervals; a difference is claimed only when it exceeds
   the seed-to-seed spread. Negative results are reported.
 
 ## Preliminary results
+
+### Anima
 
 Setup: Anima, 768×1024, cfg 5.0, `normal` scheduler, 4 prompt classes × 4 seeds (16 paired
 samples) at each of 6, 8, 10, 12 and 15 NFE. The detailed table below is the 10 NFE budget. Geometry is measured against a 100-step `euler`
@@ -231,21 +235,76 @@ Caveats:
 - `ode` at 10 steps is shown for reference only and is outside the frontier range.
 - Geometry and texture are latent-space proxies that have not been validated against human
   judgement.
+- These runs were produced with ComfyUI 0.31.1. After upgrading to 0.42.5 (needed for Flux 3),
+  deterministic `euler` output is bit-identical but stochastic samplers produce different noise
+  realisations for the same seed, so Anima runs from the two versions must not be mixed within one
+  paired comparison. The cause was not investigated.
+
+### Flux 3 Klein
+
+Setup: Flux 3 Klein int8 checkpoint, 768×1024, cfg 1.0, `normal` scheduler, ComfyUI 0.42.5, 4
+prompt classes × 4 seeds (16 paired samples) at each of 6, 8, 10, 12 and 15 NFE; about 0.65 s per
+step. `eta_bar = 1.7`, `exponent = ±1`, budget conserved. Geometry is the deviation from the
+same-budget `euler` run (see the protocol).
+
+**Texture advantage over the uniform frontier** (point estimate and 95 % bootstrap CI; `*` marks an
+interval that excludes zero):
+
+| Variant | 6 NFE | 8 NFE | 10 NFE | 12 NFE | 15 NFE |
+| --- | --- | --- | --- | --- | --- |
+| `curv_p1` | −0.0017 [−0.0023, −0.0011] * | −0.0025 [−0.0040, −0.0011] * | +0.0009 [−0.0009, +0.0029] | +0.0003 [−0.0024, +0.0031] | +0.0049 [+0.0003, +0.0096] * |
+| `curv_m1` | +0.0045 [+0.0034, +0.0055] * | +0.0030 [+0.0012, +0.0051] * | −0.0043 [−0.0073, −0.0013] * | −0.0034 [−0.0058, −0.0013] * | −0.0049 [−0.0101, −0.0004] * |
+| `pce_p1` | −0.0016 [−0.0021, −0.0012] * | −0.0041 [−0.0053, −0.0027] * | −0.0113 [−0.0151, −0.0074] * | −0.0084 [−0.0122, −0.0044] * | −0.0100 [−0.0142, −0.0058] * |
+| `pce_m1` | +0.0041 [+0.0028, +0.0053] * | +0.0042 [+0.0034, +0.0051] * | +0.0090 [+0.0058, +0.0115] * | +0.0042 [+0.0016, +0.0065] * | +0.0110 [+0.0052, +0.0167] * |
+
+**Reading.**
+
+- **Error-driven allocation has a consistent effect.** `pce_m1` (more noise where the free
+  predictor–corrector error is low, less where it is high) is positive with an interval excluding
+  zero at all five budgets, and its mirror image `pce_p1` is negative at all five. A dose–response
+  of this kind is hard to explain by chance. The size is modest: at 15 NFE `pce_m1` gains 0.0110
+  texture units, about 90 % of the texture that uniform `eta` buys going from 1.4 to 2.0
+  (0.7145 → 0.7268); at 10 NFE it is about half of that range. Relative to the texture value itself
+  (about 0.7) it is 1–2 %.
+- **Curvature is not a stable control.** `curv_m1` is positive at 6 and 8 NFE and negative at 10,
+  12 and 15; `curv_p1` has the opposite pattern. The sign of the effect depends on the budget, so
+  no single direction of the curvature rule helps across budgets. The original curvature
+  hypothesis is therefore still not supported; what carries the result on Flux 3 is the
+  error signal.
+- **The allocation law is not universal.** The same `pce_m1` setting is inconclusive on Anima:
+  positive point estimates at 6 and 10 NFE, none reliable, and a different sign at the other
+  budgets. Whatever the mechanism is, it is considerably stronger on this model than on Anima,
+  which answers the transfer question with "needs recalibration per model" rather than
+  "universal".
+
+Caveats specific to this result:
+
+- Texture is high-pass energy in latent space. It cannot tell real fine detail from residual
+  noise, and noise placed late in the trajectory raises it too. A spot check of 15 NFE crops for
+  two prompts and one seed showed no obvious grain for `pce_m1` against uniform `eta`, but a
+  spot check is not a test. The human forced-choice study listed under the secondary objective is
+  now the most informative next experiment.
+- The geometry axis changed meaning (deviation from the same-budget deterministic run), and the
+  checkpoint is probably step-distilled, so the frontier is built from a model whose response to
+  `eta` is much flatter than Anima's (texture 0.7097 → 0.7274 over `eta` 1.4 → 2.0 at 10 NFE).
+  Small absolute differences carry more weight on a flat frontier.
+- 20 comparisons were made without correction for multiple testing. The sign-consistent `pce`
+  pattern does not depend on it, but the isolated significant `curv` intervals might.
+- One `eta_bar`, one `exponent` magnitude, one checkpoint.
 
 ## Secondary objective
 
-One of two directions will be chosen once the primary result is in:
-
-- **Transfer to another flow-matching model** (Flux- or SD3-class, subject to access). Tests
-  whether the adaptation law is universal or needs per-architecture recalibration. The weakest
-  point of both earlier pieces of work is that they were measured on a single model.
-- **Metric validation against human judgement.** A forced-choice A/B study on 20–30 image pairs
-  to check that the custom geometry and texture metrics agree with human preference, since all
-  quantitative claims of the earlier work rest on them.
+- **Transfer to another flow-matching model.** Done for Flux 3 Klein (see above): the effect is
+  not universal. MOSS-Image is a different architecture (5B DiT, Qwen3.5-9B text encoder, shares
+  only the FLUX.2 VAE) and is planned once its weights are available.
+- **Metric validation against human judgement.** Not started. A forced-choice A/B study on 20–30
+  image pairs to check that the custom geometry and texture metrics agree with human preference,
+  since all quantitative claims rest on them. Given the Flux 3 result this is the priority: the
+  question is whether the `pce_m1` texture gain is something a person prefers.
 
 ## Known limitations
 
-- Single-model evidence until the transfer study is done.
+- Two models so far (Anima, Flux 3 Klein), with different geometry references.
 - Geometry and texture are latent-space proxies, not validated perceptual metrics.
 - Raising `eta` also shifts composition, so "geometry" against a deterministic reference
   conflates structural damage with legitimate variation.
