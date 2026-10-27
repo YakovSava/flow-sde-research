@@ -105,6 +105,7 @@ metrics.py            geometry / texture metrics, frontier advantage, bootstrap
 profiles.py           per-model graph, resolution, cfg, metric pooling
 run_experiment.py     drives ComfyUI over its HTTP API and reports the comparison
 export_results.py     writes every per-sample metric and the summary table to results/
+build_survey.py       builds the human-study image set and answer keys in survey/
 results/              samples.csv (one row per image) and summary.csv (one row per model, NFE, variant)
 tests/                unit tests (pytest)
 ```
@@ -175,6 +176,18 @@ the same-budget `euler` run while the other two are relative to the 100-step run
 Measured cost on an RTX 5060 (8 GB) at 768×1024, cfg 5: roughly 6–7 s per step. A 100-step
 geometry reference takes about 11 min and a 30-step texture reference about 4 min per
 (prompt, seed), which dominates the cost of the experiment.
+
+### Human study materials
+
+`build_survey.py` assembles the images for the "which one is AI-generated" study from the Flux 3
+runs at 15 NFE (prompts `face` and `fur`, four seeds). `survey/pairs/` holds 24 side-by-side
+images (A | B) covering three contrasts: `texture_law` (`pce_m1` vs `pce_p1`), `eta_control`
+(uniform `eta` 1.4 vs 2.0, a positive control) and `claim` (`pce_m1` vs uniform `eta` 1.7).
+`survey/singles/form_1` and `form_2` hold 16 single images each, with the variant of every item
+swapped between the two forms so that no respondent sees both variants of one item. Side
+assignment and order are randomised with a fixed seed. Images are re-saved without metadata.
+The answer keys are in `survey/key/` and must not be shown to respondents; the images themselves
+are not tracked by git.
 
 ## Evaluation protocol
 
