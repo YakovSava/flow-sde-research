@@ -1,17 +1,20 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
-English · [Русский](README_ru.md) · [中文](README_zh.md)
+English · [Русский](README_ru.md) · [中文](README_zh.md) · [Марий йылме](README_mhr.md)
 
 This English text is the reference version. The translations follow it and may lag behind;
 if they disagree, the English text is authoritative.
 
-> **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
-> `sa_solver` bit-for-bit through ComfyUI. Three models have been measured (Anima, Flux 3 Klein,
-> MOSS-Image). Curvature-driven allocation shows **no stable effect on any of them**.
-> Error-driven allocation (`signal = pc_error`) shows nothing on Anima, a sign-consistent effect
-> on Flux 3, and a one-sided effect on MOSS-Image (the wrong sign hurts, the right sign helps
-> little). See [Preliminary results](#preliminary-results). Everything else below is a
-> hypothesis, a protocol, or a plan, and numbers quoted from earlier work are labelled as such.
+> **Status: work in progress.** The sampler is implemented, unit-tested, and verified to
+> reproduce `sa_solver` bit-for-bit through ComfyUI. Three models have been measured (Anima,
+> Flux 3 Klein, MOSS-Image). Curvature-driven allocation shows **no stable effect on any of
+> them**. Error-driven allocation (`signal = pc_error`) shows nothing on Anima, a sign-consistent
+> effect on Flux 3, and a one-sided effect on MOSS-Image (the wrong sign hurts, the right sign
+> helps little). The human study is still collecting responses, so whether the metrics match
+> human perception is open. See [Goals, hypotheses and outcomes](#goals-hypotheses-and-outcomes)
+> for a one-page overview and [Preliminary results](#preliminary-results) for the numbers.
+> Everything else below is a hypothesis, a protocol, or a plan, and numbers quoted from earlier
+> work are labelled as such.
 
 Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
 models at low NFE budgets (6–15 steps).
@@ -26,6 +29,41 @@ This is a follow-up to two earlier pieces of work, both published in
 
 This repository tests a different mechanism: noise distributed over steps according to local
 trajectory curvature.
+
+## Goals, hypotheses and outcomes
+
+*State on 2026-10-27. The work is not finished; what is described here is what has actually been
+done and measured.*
+
+### Goals
+
+| Goal | Outcome |
+| --- | --- |
+| **Primary.** Build a Flow-SDE sampler whose noise strength comes from free local signals instead of a constant, and compare it with `sa_solver` at 6–15 NFE | **Done.** The `Flow-SDE Sampler` node costs 1 NFE per step, reproduces `sa_solver` bit-for-bit when adaptation is off, and has 151 unit tests. It was compared on three models at five budgets with 16 paired samples each |
+| **Does it give a better geometry/texture trade-off?** | **Depends on the model and the signal.** No for curvature. A small gain for `pc_error` on Flux 3 Klein, a one-sided effect on MOSS-Image, nothing detectable on Anima |
+| **Secondary A.** Check whether the law transfers to other flow-matching models | **Done** for Flux 3 Klein and MOSS-Image. The effect is not universal |
+| **Secondary B.** Check the custom metrics against human judgement | **In progress.** The image set and answer keys are ready and responses are being collected; nothing has been analysed yet |
+
+### Hypotheses
+
+| Hypothesis | Verdict | Evidence |
+| --- | --- | --- |
+| **H1.** Redistributing a fixed noise budget by local curvature improves the geometry/texture trade-off | **Not supported** | 30 comparisons (2 directions × 5 budgets × 3 models). Some intervals exclude zero (1 on Anima, 8 on Flux 3, 3 on MOSS-Image) but the sign depends on the budget, so no single direction helps |
+| **H2.** *(Exploratory; formed after seeing the Anima and Flux 3 data.)* Redistributing noise by the free predictor–corrector error, with the budget held equal, improves the trade-off when more noise goes where the error is low | **Partly supported** | Flux 3: `pce_m1` positive and `pce_p1` negative at all five budgets, all ten intervals exclude zero. MOSS-Image: same direction; the harmful sign is significant at 4 of 5 budgets, the helpful one at 1 of 5. Anima: not detectable. Needs confirmation on new samples and checkpoints |
+| **H3.** The earlier null result for error-driven noise control (`response` ≠ 0) was a confusion of *how much* and *where* | **Not shown on Anima**, where the null reproduces at equal budget; an effect appears on other models | See H2 |
+| **H4.** The allocation law is universal across flow-matching models | **Not supported** | The direction agrees where an effect is visible, but its size differs strongly between models |
+| **H5.** The texture gain is real detail rather than residual noise, and a person can perceive it | **Open** | Human study in progress; the latent-space texture metric alone cannot answer this |
+| **H6.** Online adaptation matters beyond a fixed non-uniform schedule (`static-profile`) | **Not tested** | The variant is not implemented |
+
+### Not done yet
+
+- Analysis of the human study (responses are still coming in).
+- The `static-profile` variant.
+- Other `eta_bar` values, stronger `exponent` (±2), other `spread` and `smoothing` settings.
+- Confirmation of H2 on fresh seeds and prompts, other Flux 3 / MOSS-Image checkpoints
+  (bf16, base), and with correction for multiple comparisons.
+- The reason why stochastic samplers produce a different noise realisation for the same seed
+  after the ComfyUI upgrade from 0.31.1 to 0.42.5.
 
 ## Motivation
 
@@ -401,7 +439,8 @@ is strongly model-dependent, and on Anima it is not detectable at this sample si
   only the FLUX.2 VAE) is also done; the direction of the `pc_error` effect agrees with
   Flux 3 but the size is much smaller.
 - **Metric validation against human judgement.** The image set and answer keys are prepared (see
-  [Human study materials](#human-study-materials)); no responses have been collected yet. The
+  [Human study materials](#human-study-materials)); responses are being collected and nothing
+  has been analysed yet. The
   study asks which of two images looks AI-generated, to check that the custom geometry and
   texture metrics agree with human perception, since all quantitative claims rest on them.
   Given the Flux 3 result this is the priority: the question is whether the `pce_m1` texture
