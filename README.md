@@ -1,5 +1,10 @@
 # Flow-SDE Research: Curvature-Adaptive Stochasticity
 
+English · [Русский](README_ru.md) · [中文](README_zh.md)
+
+This English text is the reference version. The translations follow it and may lag behind;
+if they disagree, the English text is authoritative.
+
 > **Status: preliminary.** The sampler is implemented, unit-tested, and verified to reproduce
 > `sa_solver` bit-for-bit through ComfyUI. Three models have been measured (Anima, Flux 3 Klein,
 > MOSS-Image). Curvature-driven allocation shows **no stable effect on any of them**.
@@ -42,9 +47,9 @@ geometric error, while the same noise added where the field is smooth may be con
 texture. If so, redistributing a fixed noise budget across steps according to local curvature
 should improve the geometry/texture trade-off over a uniform `eta` at the same budget.
 
-This is a different mechanism from `response` ≠ 0 and has not been tested. The sign of the
-relation (more noise on stiff steps or on smooth ones) is not known in advance and is part of
-what the experiments must determine.
+This is a different mechanism from `response` ≠ 0 and had not been tested before this work
+(results are below). The sign of the relation (more noise on stiff steps or on smooth ones) was
+not known in advance and is part of what the experiments had to determine.
 
 ## Method
 
@@ -64,8 +69,8 @@ w_i     = clamp((kappa_i / reference_i)^exponent, 1/spread, spread)
 ```
 
 where `reference_i` is a running average of past curvature, `eta_bar` is the nominal strength, and
-`c_i` is a budget-conservation factor (see below). The control is causal: it uses only information available
-after the evaluation at step `i`.
+`c_i` is a budget-conservation factor (see below). The control is causal: it uses only
+information available after the evaluation at step `i`.
 
 ### The control that matters: equal noise budget
 
@@ -146,11 +151,13 @@ With ComfyUI running (and the model, LoRA, text encoder and VAE names in `profil
 your installation). `--model` selects the profile (`anima` by default, `flux3`, or `moss`):
 
 ```
-venv/Scripts/python.exe custom_nodes/flow-sde-research/run_experiment.py     --prompts flat face --seeds 42 1337 --budgets 10 --variants sa_solver uniform_e17 curv_p1
+venv/Scripts/python.exe custom_nodes/flow-sde-research/run_experiment.py \
+    --prompts flat face --seeds 42 1337 --budgets 10 --variants sa_solver uniform_e17 curv_p1
 ```
 
-Latents and images are written to `output/flow_sde/` (`output/flow_sde_flux3/` and `output/flow_sde_moss/` for the other models); finished jobs are skipped, so an
-interrupted run resumes. `--analyse-only` recomputes the report from existing files and
+Latents and images are written to `output/flow_sde/` (`output/flow_sde_flux3/` and
+`output/flow_sde_moss/` for the other models); finished jobs are skipped, so an interrupted run
+resumes. `--analyse-only` recomputes the report from existing files and
 `--report FILE` stores per-sample metrics as JSON.
 
 The report gives mean geometry, texture, and the texture gap to a converged 30-step reference for
@@ -173,9 +180,11 @@ a different order; point estimates are identical. Anima rows come from ComfyUI 0
 others from 0.42.5 (the `comfyui_version` column), and the Flux 3 `geometry` column is relative to
 the same-budget `euler` run while the other two are relative to the 100-step run.
 
-Measured cost on an RTX 5060 (8 GB) at 768×1024, cfg 5: roughly 6–7 s per step. A 100-step
-geometry reference takes about 11 min and a 30-step texture reference about 4 min per
-(prompt, seed), which dominates the cost of the experiment.
+Measured cost on an RTX 5060 (8 GB) at 768×1024: about 0.65 s per step for Flux 3 Klein and
+0.9–1 s per step for Anima and MOSS-Image. The 100-step geometry reference (about 90 s) and
+the 30-step texture reference (about 25 s) per (prompt, seed) are a sizeable part of the cost.
+Complete runs of 16 pairs × 5 budgets × 8 variants took 70 min (Flux 3 Klein) and 150 min
+(MOSS-Image); Anima was run in two stages of 57 and 101 min.
 
 ### Human study materials
 
@@ -391,10 +400,12 @@ is strongly model-dependent, and on Anima it is not detectable at this sample si
   not universal. MOSS-Image (a different architecture: 5B DiT, Qwen3.5-9B text encoder, shares
   only the FLUX.2 VAE) is also done; the direction of the `pc_error` effect agrees with
   Flux 3 but the size is much smaller.
-- **Metric validation against human judgement.** Not started. A forced-choice A/B study on 20–30
-  image pairs to check that the custom geometry and texture metrics agree with human preference,
-  since all quantitative claims rest on them. Given the Flux 3 result this is the priority: the
-  question is whether the `pce_m1` texture gain is something a person prefers.
+- **Metric validation against human judgement.** The image set and answer keys are prepared (see
+  [Human study materials](#human-study-materials)); no responses have been collected yet. The
+  study asks which of two images looks AI-generated, to check that the custom geometry and
+  texture metrics agree with human perception, since all quantitative claims rest on them.
+  Given the Flux 3 result this is the priority: the question is whether the `pce_m1` texture
+  gain is something a person notices.
 
 ## Known limitations
 
@@ -408,8 +419,8 @@ is strongly model-dependent, and on Anima it is not detectable at this sample si
 
 The SA-Solver loop in `sampler.py` is adapted from `sample_adaptive_sa` of
 `adaptive-step-samplers`, with the error-driven controller replaced by `NoiseAllocator`.
-The trajectory probe and analysis scripts are not copied; experiments are intended to use the
-probe from the earlier repository, installed alongside.
+The trajectory probe and analysis scripts are not copied, and the experiment runner does not
+depend on them: it saves the final latents with the core `SaveLatent` node.
 
 ## Authors
 
