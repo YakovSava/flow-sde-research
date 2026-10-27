@@ -465,7 +465,7 @@ NFE.
 
 ## Авторы
 
-Iakov Savelev, Yehor Yuzvynsky.
+Iakov Savelev.
 
 ## Цитирование
 

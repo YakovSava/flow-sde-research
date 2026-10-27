@@ -16,14 +16,15 @@ if they disagree, the English text is authoritative.
 > Everything else below is a hypothesis, a protocol, or a plan, and numbers quoted from earlier
 > work are labelled as such.
 
-Research on controlling the strength of stochasticity (`eta`) in SDE samplers for flow-matching
-models at low NFE budgets (6–15 steps).
+Research on controlling the strength of stochasticity (`eta`) in SDE samplers [1] for
+flow-matching models [2, 3, 6] at low NFE budgets (6–15 steps).
 
 This is a follow-up to two earlier pieces of work, both published in
 [adaptive-step-samplers](https://github.com/YakovSava/adaptive-step-samplers)
-([DOI](https://doi.org/10.5281/zenodo.23529356)):
+([DOI](https://doi.org/10.5281/zenodo.23529356), reference [9]):
 
-1. A free local error estimate from the predictor–corrector gap, used for adaptive step size.
+1. A free local error estimate from the predictor–corrector gap (a Milne-type estimate [7]),
+   used for adaptive step size.
 2. Exposed SA-Solver stochastic strength, including error-driven noise control
    (`response` ≠ 0), which turned out to be a negative result.
 
@@ -67,10 +68,12 @@ done and measured.*
 
 ## Motivation
 
-ComfyUI's `sa_solver` pins the stochastic strength to a constant `eta = 1.0` inside a fixed
+ComfyUI's `sa_solver` [5, 12] pins the stochastic strength to a constant `eta = 1.0` inside a fixed
 20–80 % window. The previous work exposed `eta` and found that `eta = 1.6–1.8` buys texture at a
 cost in macro geometry, with the exchange rate collapsing past `1.8`. Both the constant and the
-window are chosen by hand and are blind to what the trajectory is actually doing.
+window are chosen by hand and are blind to what the trajectory is actually doing. Injecting
+noise only inside a window of noise levels has the same form as the stochastic sampler of
+Karras et al. [4].
 
 The previous attempt at making noise adaptive drove it directly by the free predictor–corrector
 error estimate (`pc_error`). On every test it matched, within noise, simply lowering `eta` by the
@@ -98,7 +101,7 @@ At each step `i` the sampler has already evaluated the model and holds the deriv
 kappa_i = rms(d_i - d_{i-1}) / |sigma_i - sigma_{i-1}|
 ```
 
-which is the quantity recorded by the Trajectory Probe of the earlier work and costs **zero extra
+which is the quantity recorded by the Trajectory Probe of the earlier work [9] and costs **zero extra
 network evaluations**. The noise power for the step from `i` to `i+1` is
 
 ```
@@ -202,7 +205,7 @@ The report gives mean geometry, texture, and the texture gap to a converged 30-s
 every variant, plus the **texture advantage over the uniform frontier**: the difference between a
 variant's texture and the texture a uniform-`eta` sampler (`uniform_e14`, `uniform_e17`,
 `uniform_e20`) would have at the same geometry, linearly interpolated, with a 95 % bootstrap
-confidence interval over (prompt, seed) pairs. A variant that merely moves along the `eta` curve
+confidence interval [8] over (prompt, seed) pairs. A variant that merely moves along the `eta` curve
 scores zero; a better trade-off scores above zero. A variant whose geometry falls outside the
 range of the uniform runs is reported as `n/a`.
 
@@ -241,8 +244,8 @@ are not tracked by git.
 The protocol follows the earlier work so the numbers stay comparable.
 
 - **Models:** Anima (flow-matching DiT), 768×1024, cfg 5.0, `normal` scheduler; and Flux 3 Klein
-  (int8 checkpoint), 768×1024, cfg 1.0, `normal` scheduler, FLUX.2 VAE (see the Flux 3 profile
-  below); and MOSS-Image SFT (int8 checkpoint), 768×1024, cfg 3.0, `normal` scheduler, FLUX.2
+  [10] (int8 checkpoint), 768×1024, cfg 1.0, `normal` scheduler, FLUX.2 VAE (see the Flux 3 profile
+  below); and MOSS-Image SFT [11] (int8 checkpoint), 768×1024, cfg 3.0, `normal` scheduler, FLUX.2
   VAE, Qwen3.5-9B text encoder, negative prompt `worst quality, bad anatomy`. MOSS-Image uses
   the Anima protocol unchanged (100-step `euler` reference) with 4× pooling.
 - **Budgets:** 6, 8, 10, 12, 15 NFE, 1 NFE per step samplers only.
@@ -463,11 +466,12 @@ depend on them: it saves the final latents with the core `SaveLatent` node.
 
 ## Authors
 
-Iakov Savelev, Yehor Yuzvynsky.
+Iakov Savelev.
 
 ## Citation
 
-Preliminary results are not yet available. Please cite the earlier work:
+Preliminary results are not yet available. Please cite the earlier work (its authors are listed
+in the record below):
 
 ```bibtex
 @software{savelev_yuzvynsky_2026_adaptivesamplers,
@@ -479,3 +483,35 @@ Preliminary results are not yet available. Please cite the earlier work:
   url          = {https://doi.org/10.5281/zenodo.23529356}
 }
 ```
+
+## References
+
+1. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., Poole, B.
+   *Score-Based Generative Modeling through Stochastic Differential Equations.* ICLR 2021.
+   [arXiv:2011.13456](https://arxiv.org/abs/2011.13456)
+2. Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., Le, M. *Flow Matching for Generative
+   Modeling.* ICLR 2023. [arXiv:2210.02747](https://arxiv.org/abs/2210.02747)
+3. Liu, X., Gong, C., Liu, Q. *Flow Straight and Fast: Learning to Generate and Transfer Data
+   with Rectified Flow.* ICLR 2023. [arXiv:2209.03003](https://arxiv.org/abs/2209.03003)
+4. Karras, T., Aittala, M., Aila, T., Laine, S. *Elucidating the Design Space of Diffusion-Based
+   Generative Models.* NeurIPS 2022. [arXiv:2206.00364](https://arxiv.org/abs/2206.00364)
+5. Xue, S. et al. *SA-Solver: Stochastic Adams Solver for Fast Sampling of Diffusion Models.*
+   NeurIPS 2023. [arXiv:2309.05019](https://arxiv.org/abs/2309.05019)
+6. Esser, P. et al. *Scaling Rectified Flow Transformers for High-Resolution Image Synthesis.*
+   ICML 2024. [arXiv:2403.03206](https://arxiv.org/abs/2403.03206)
+7. Hairer, E., Nørsett, S. P., Wanner, G. *Solving Ordinary Differential Equations I: Nonstiff
+   Problems.* 2nd revised ed., Springer Series in Computational Mathematics 8, Springer, 1993.
+8. Efron, B. Bootstrap methods: another look at the jackknife. *The Annals of Statistics* 7(1),
+   1–26, 1979.
+9. Savelev, I., Yuzvynsky, Y. *Adaptive Step Samplers: Zero-Cost Truncation Error Estimation and
+   Exposed Stochastic Control for ComfyUI.* Zenodo, 2026.
+   [doi:10.5281/zenodo.23529356](https://doi.org/10.5281/zenodo.23529356)
+10. Black Forest Labs. *FLUX.3 Image Klein* (documentation and ComfyUI weights).
+    <https://docs.bfl.ml/flux_3/flux3_image_klein>
+11. OpenMOSS. *MOSS-Image* (code, model cards and user guide).
+    <https://github.com/OpenMOSS/MOSS-Image>
+12. ComfyUI. <https://github.com/comfyanonymous/ComfyUI>
+
+References 1–8 are the literature the method and the statistics build on. References 9–12 are
+the earlier work, the two checkpoints and the software used in the experiments. The Anima
+checkpoint is not listed: no citable source has been added yet.

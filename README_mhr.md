@@ -456,7 +456,7 @@ probe да анализ скриптвлак копироватлыме огыл
 
 ## Авторвлак
 
-Iakov Savelev, Yehor Yuzvynsky.
+Iakov Savelev.
 
 ## Цитироватлымаш
 

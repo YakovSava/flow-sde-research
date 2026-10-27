@@ -395,7 +395,7 @@ Flux 3 不同，该检查点未经步数蒸馏，100 步 `euler` 运行可作参
 
 ## 作者
 
-Iakov Savelev, Yehor Yuzvynsky.
+Iakov Savelev.
 
 ## 引用
 
