@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software or its results, please cite it as below."
+type: software
+title: "Where, Not How Much: Fixed versus Adaptive Noise Schedules for Flow-Matching SDE Samplers at Low NFE"
+abstract: >-
+  A budget-conserving noise allocator for SA-Solver-style SDE samplers of flow-matching image
+  models, with experiments on Anima, Flux 3 Klein and MOSS-Image at 6-15 network evaluations,
+  a human perception study, and per-image metrics. Curvature-driven allocation showed no stable
+  effect; error-driven allocation gave a small, model-dependent gain that a fixed per-step schedule
+  reproduced.
+authors:
+  - family-names: "Savelev"
+    given-names: "Iakov"
+license: MIT
+repository-code: "https://github.com/YakovSava/flow-sde-research"
+keywords:
+  - flow matching
+  - diffusion models
+  - stochastic sampling
+  - SDE sampler
+  - SA-Solver
+  - low NFE
+  - noise schedule
+  - ComfyUI
+  - negative result
+references:
+  - type: software
+    title: "Adaptive Step Samplers: Zero-Cost Truncation Error Estimation and Exposed Stochastic Control for ComfyUI"
+    authors:
+      - family-names: "Savelev"
+        given-names: "Iakov"
+      - family-names: "Yuzvynsky"
+        given-names: "Yehor"
+    year: 2026
+    doi: "10.5281/zenodo.23529356"
+  - type: article
+    title: "SA-Solver: Stochastic Adams Solver for Fast Sampling of Diffusion Models"
+    authors:
+      - family-names: "Xue"
+        given-names: "Shuchen"
+    year: 2023
+    journal: "Advances in Neural Information Processing Systems (NeurIPS)"
+    url: "https://arxiv.org/abs/2309.05019"
