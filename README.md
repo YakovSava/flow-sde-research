@@ -420,6 +420,19 @@ least 1 MP; this experiment runs at 6–15 steps and 0.79 MP, outside the intend
 - **Curvature again shows no stable effect.** Two significant intervals at 6 NFE with opposite
   signs for the two directions, and nothing consistent above.
 
+### Confirmation run on fresh seeds (pre-specified)
+
+Written and committed before the run. Flux 3 Klein, seeds 31337, 99, 555 and 8086 (none used
+before), the same four prompt classes, 6/8/10/12/15 NFE, variants `uniform` (`eta` 1.4, 1.7,
+2.0), `pce_m1`, `pce_p1` and `static_pce`. The static profile is the one calibrated on seeds
+101–104 (`results/static_profile_flux3.json`). The result counts as a **confirmation** of H2 if,
+on these new samples, the 95 % bootstrap interval of the texture advantage excludes zero in the
+positive direction for `pce_m1` and in the negative direction for `pce_p1` at at least four of
+the five budgets. It counts as a confirmation that a fixed schedule is enough (H6) if
+`static_pce` is not worse than `pce_m1` by more than the half-width of the `pce_m1` interval at
+the same budget at at least four of the five budgets. Anything else is reported as a failure to
+confirm.
+
 ### Across models
 
 Texture advantage of the `pc_error` variants over the uniform frontier, counted over the five
