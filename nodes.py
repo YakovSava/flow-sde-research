@@ -1,10 +1,39 @@
 import functools
-from typing import Any
+import json
+import pathlib
+from typing import Any, Callable
 
 import comfy.samplers
 
 from .noise_allocation import CURVATURE, SIGNALS
 from .sampler import STOCHASTIC_END, STOCHASTIC_START, sample_flow_sde
+
+
+def trace_writer(path: pathlib.Path) -> Callable[[int, float, float | None], None]:
+    def write(index: int, tau: float, signal: float | None) -> None:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"i": index, "tau": tau, "signal": signal}) + "\n")
+
+    return write
+
+
+def sample_with_profile_file(
+    model: Any,
+    x: Any,
+    sigmas: Any,
+    profile_file: str = "",
+    trace_file: str = "",
+    **options: Any,
+) -> Any:
+    profile: list[float] | None = None
+    if profile_file:
+        profiles: dict[str, list[float]] = json.loads(
+            pathlib.Path(profile_file).read_text(encoding="utf-8")
+        )
+        profile = profiles[str(len(sigmas) - 1)]
+    if trace_file:
+        options["step_observer"] = trace_writer(pathlib.Path(trace_file))
+    return sample_flow_sde(model, x, sigmas, profile=profile, **options)
 
 
 class FlowSDESampler:
@@ -31,7 +60,11 @@ class FlowSDESampler:
                 "corrector_order": ("INT", {"default": 4, "min": 0, "max": 6}),
                 "s_noise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
                 "simple_order_2": ("BOOLEAN", {"default": False}),
-            }
+            },
+            "optional": {
+                "profile_file": ("STRING", {"default": ""}),
+                "trace_file": ("STRING", {"default": ""}),
+            },
         }
 
     RETURN_TYPES = ("SAMPLER",)
@@ -54,9 +87,13 @@ class FlowSDESampler:
         corrector_order: int,
         s_noise: float,
         simple_order_2: bool,
+        profile_file: str = "",
+        trace_file: str = "",
     ) -> tuple[Any]:
         sampler_function = functools.partial(
-            sample_flow_sde,
+            sample_with_profile_file,
+            profile_file=profile_file,
+            trace_file=trace_file,
             eta=eta,
             stochastic_start=stochastic_start,
             stochastic_end=stochastic_end,

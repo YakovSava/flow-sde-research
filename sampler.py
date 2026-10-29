@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import torch
 
@@ -55,6 +55,7 @@ def sample_flow_sde(
     rtol: float = 0.05,
     atol: float = 0.0078,
     step_observer: Callable[[int, float, float | None], None] | None = None,
+    profile: Sequence[float] | None = None,
 ) -> torch.Tensor:
     if len(sigmas) <= 1:
         return x
@@ -84,6 +85,7 @@ def sample_flow_sde(
         smoothing=smoothing,
         tau_max=tau_max,
         conserve_budget=conserve_budget,
+        profile=profile,
     )
 
     max_used_order: int = max(predictor_order, corrector_order)

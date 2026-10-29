@@ -34,6 +34,7 @@ class NoiseAllocator:
         smoothing: float = 0.5,
         tau_max: float = 4.0,
         conserve_budget: bool = True,
+        profile: Sequence[float] | None = None,
     ) -> None:
         self.eta: float = eta
         self.step_sizes: list[float] = [float(size) for size in step_sizes]
@@ -46,10 +47,27 @@ class NoiseAllocator:
         self.ratio: float | None = None
         self.spent: float = 0.0
         self.budget: float = eta**2 * self.window_size(0)
+        self.static_power: list[float] | None = (
+            None if profile is None else self.profile_power(profile)
+        )
         self.last_active: int = max(
             (index for index, flag in enumerate(self.active) if flag),
             default=-1,
         )
+
+    def profile_power(self, profile: Sequence[float]) -> list[float]:
+        weights: list[float] = [max(float(value), 0.0) for value in profile]
+        if len(weights) != len(self.step_sizes):
+            raise ValueError("profile length must equal the number of steps")
+        weighted: float = sum(
+            weight * size
+            for weight, size, flag in zip(weights, self.step_sizes, self.active)
+            if flag
+        )
+        if weighted <= 0.0:
+            return [0.0] * len(weights)
+        scale: float = self.window_size(0) / weighted
+        return [self.eta**2 * weight * scale for weight in weights]
 
     def window_size(self, start: int) -> float:
         return sum(
@@ -76,10 +94,14 @@ class NoiseAllocator:
     def level(self, index: int) -> float:
         if not self.active[index]:
             return 0.0
-        weight: float = self.weight()
         size: float = self.step_sizes[index]
+        if self.static_power is not None:
+            tau: float = min(math.sqrt(self.static_power[index]), self.tau_max)
+            self.spent += tau * tau * size
+            return tau
+        weight: float = self.weight()
         if self.exponent == 0.0 or not self.conserve_budget:
-            tau: float = min(self.eta * math.sqrt(weight), self.tau_max)
+            tau = min(self.eta * math.sqrt(weight), self.tau_max)
         else:
             tau = min(math.sqrt(self.conserved_power(index, weight, size)), self.tau_max)
         self.spent += tau * tau * size

@@ -142,3 +142,32 @@ def test_eta_zero_is_deterministic() -> None:
     first, _ = run(sample_flow_sde, 10, eta=0.0, exponent=1.0)
     second, _ = run(sample_flow_sde, 10, eta=0.0, exponent=-1.0)
     assert float((first - second).abs().max()) == 0.0
+
+
+def test_static_profile_costs_one_evaluation_and_conserves_budget() -> None:
+    steps = 12
+    eta = 1.6
+    taus: list[float] = []
+
+    def observer(index: int, tau: float, signal: float | None) -> None:
+        taus.append(tau)
+
+    profile = [0.0, 0.0, 3.0, 2.0, 1.0, 1.0, 1.0, 0.5, 0.2, 0.1, 0.0, 0.0]
+    _, calls = run(
+        sample_flow_sde,
+        steps,
+        eta=eta,
+        profile=profile,
+        tau_max=100.0,
+        step_observer=observer,
+    )
+    assert calls == steps
+
+    sampling = FlowSampling()
+    sigmas = kds.offset_first_sigma_for_snr(torch.linspace(1.0, 0.0, steps + 1), sampling)
+    lambdas = kds.sigma_to_half_log_snr(sigmas, model_sampling=sampling)
+    sizes = [float(lambdas[i + 1] - lambdas[i]) for i in range(len(taus))]
+    window = [tau > 0.0 for tau in taus]
+    spent = sum(tau**2 * size for tau, size in zip(taus, sizes))
+    expected = eta**2 * sum(size for size, flag in zip(sizes, window) if flag)
+    assert spent == pytest.approx(expected, rel=1e-9)

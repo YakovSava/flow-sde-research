@@ -22,6 +22,7 @@ from profiles import (
     SAME_BUDGET,
     Profile,
 )
+from static_profile import build_profiles, write_profiles
 
 SERVER: str = "http://127.0.0.1:8188"
 OUTPUT: pathlib.Path = pathlib.Path("D:/ComfyUI/output")
@@ -38,6 +39,8 @@ FRONTIER: list[str] = ["uniform_e14", "uniform_e17", "uniform_e20"]
 class Variant:
     sampler_name: str | None = None
     settings: dict[str, Any] = field(default_factory=dict)
+    uses_profile: bool = False
+    traced: bool = False
 
 
 def flow_sde(**settings: Any) -> Variant:
@@ -55,7 +58,30 @@ VARIANTS: dict[str, Variant] = {
     "curv_m1": flow_sde(eta=ETA, signal="curvature", exponent=-1.0),
     "pce_p1": flow_sde(eta=ETA, signal="pc_error", exponent=1.0),
     "pce_m1": flow_sde(eta=ETA, signal="pc_error", exponent=-1.0),
+    "static_pce": Variant(
+        settings={"eta": ETA, "signal": "pc_error", "exponent": 0.0},
+        uses_profile=True,
+    ),
 }
+
+CALIBRATION_VARIANT: str = "cal_pce_m1"
+CALIBRATION_SEEDS: list[int] = [101, 102, 103, 104]
+TRACE_DIR: pathlib.Path = OUTPUT / "flow_sde_traces"
+PROFILE_DIR: pathlib.Path = pathlib.Path(__file__).parent / "results"
+HIDDEN_VARIANTS: dict[str, Variant] = {
+    CALIBRATION_VARIANT: Variant(
+        settings={"eta": ETA, "signal": "pc_error", "exponent": -1.0},
+        traced=True,
+    ),
+}
+
+
+def trace_path(profile: Profile, steps: int) -> pathlib.Path:
+    return TRACE_DIR / f"{profile.name}_n{steps:03d}.jsonl"
+
+
+def profile_path(profile: Profile) -> pathlib.Path:
+    return PROFILE_DIR / f"static_profile_{profile.name}.json"
 
 FLOW_SDE_DEFAULTS: dict[str, Any] = {
     "eta": 1.0,
@@ -93,17 +119,19 @@ def request(path: str, payload: dict[str, Any] | None = None) -> Any:
 
 
 def build_graph(job: Job, profile: Profile) -> dict[str, Any]:
-    variant = VARIANTS[job.variant]
+    variant = {**VARIANTS, **HIDDEN_VARIANTS}[job.variant]
     if variant.sampler_name is not None:
         sampler = {
             "class_type": "KSamplerSelect",
             "inputs": {"sampler_name": variant.sampler_name},
         }
     else:
-        sampler = {
-            "class_type": "FlowSDESampler",
-            "inputs": {**FLOW_SDE_DEFAULTS, **variant.settings},
-        }
+        inputs = {**FLOW_SDE_DEFAULTS, **variant.settings}
+        if variant.uses_profile:
+            inputs["profile_file"] = str(profile_path(profile))
+        if variant.traced:
+            inputs["trace_file"] = str(trace_path(profile, job.steps))
+        sampler = {"class_type": "FlowSDESampler", "inputs": inputs}
     graph = NODE_BUILDERS[profile.name](profile, profile.prompts[job.prompt])
     graph.update(
         {
@@ -310,6 +338,24 @@ def report(
     return summary
 
 
+def calibrate(profile: Profile, prompts: list[str], budgets: list[int]) -> None:
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    jobs = [
+        Job(tag_for(CALIBRATION_VARIANT, prompt, seed, steps), prompt, seed, steps, CALIBRATION_VARIANT)
+        for prompt in prompts
+        for seed in CALIBRATION_SEEDS
+        for steps in budgets
+    ]
+    pending = [job for job in jobs if latent_path(job.tag, profile) is None]
+    for steps in budgets:
+        if any(job.steps == steps for job in pending):
+            trace_path(profile, steps).unlink(missing_ok=True)
+    run_jobs(jobs, profile)
+    profiles = build_profiles({steps: trace_path(profile, steps) for steps in budgets})
+    write_profiles(profiles, profile_path(profile))
+    print(f"wrote {profile_path(profile)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="anima", choices=list(PROFILES))
@@ -318,11 +364,16 @@ def main() -> None:
     parser.add_argument("--budgets", nargs="+", type=int, default=DEFAULT_BUDGETS)
     parser.add_argument("--variants", nargs="+", default=list(VARIANTS), choices=list(VARIANTS))
     parser.add_argument("--analyse-only", action="store_true")
+    parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--report", type=pathlib.Path)
     arguments = parser.parse_args()
 
     profile = PROFILES[arguments.model]
     prompts = arguments.prompts or list(profile.prompts)
+
+    if arguments.calibrate:
+        calibrate(profile, prompts, arguments.budgets)
+        return
 
     if not arguments.analyse_only:
         run_jobs(plan_jobs(profile, prompts, arguments.seeds, arguments.budgets, arguments.variants), profile)
