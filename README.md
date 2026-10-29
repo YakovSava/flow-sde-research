@@ -10,11 +10,12 @@ if they disagree, the English text is authoritative.
 > Flux 3 Klein, MOSS-Image). Curvature-driven allocation shows **no stable effect on any of
 > them**. Error-driven allocation (`signal = pc_error`) shows nothing on Anima, a sign-consistent
 > effect on Flux 3, and a one-sided effect on MOSS-Image (the wrong sign hurts, the right sign
-> helps little). The human study is still collecting responses, so whether the metrics match
-> human perception is open. See [Goals, hypotheses and outcomes](#goals-hypotheses-and-outcomes)
-> for a one-page overview and [Preliminary results](#preliminary-results) for the numbers.
-> Everything else below is a hypothesis, a protocol, or a plan, and numbers quoted from earlier
-> work are labelled as such.
+> helps little). A human study (39 respondents) confirms that people see large differences in
+> noise strength but finds **no perceptible difference** between the error-driven allocation and
+> uniform noise. The static-profile control experiment is in progress. See
+> [Goals, hypotheses and outcomes](#goals-hypotheses-and-outcomes) for a one-page overview and
+> [Preliminary results](#preliminary-results) for the numbers. Everything else below is a
+> hypothesis, a protocol, or a plan, and numbers quoted from earlier work are labelled as such.
 
 Research on controlling the strength of stochasticity (`eta`) in SDE samplers [1] for
 flow-matching models [2, 3, 6] at low NFE budgets (6–15 steps).
@@ -43,7 +44,7 @@ done and measured.*
 | **Primary.** Build a Flow-SDE sampler whose noise strength comes from free local signals instead of a constant, and compare it with `sa_solver` at 6–15 NFE | **Done.** The `Flow-SDE Sampler` node costs 1 NFE per step, reproduces `sa_solver` bit-for-bit when adaptation is off, and has 151 unit tests. It was compared on three models at five budgets with 16 paired samples each |
 | **Does it give a better geometry/texture trade-off?** | **Depends on the model and the signal.** No for curvature. A small gain for `pc_error` on Flux 3 Klein, a one-sided effect on MOSS-Image, nothing detectable on Anima |
 | **Secondary A.** Check whether the law transfers to other flow-matching models | **Done** for Flux 3 Klein and MOSS-Image. The effect is not universal |
-| **Secondary B.** Check the custom metrics against human judgement | **In progress.** The image set and answer keys are ready and responses are being collected; nothing has been analysed yet |
+| **Secondary B.** Check the custom metrics against human judgement | **Done (null result for the main claim).** 39 respondents. The texture metric points the same way as human judgement for a large noise difference, but humans see no difference for the error-driven allocation. See [Human study](#human-study) |
 
 ### Hypotheses
 
@@ -53,12 +54,11 @@ done and measured.*
 | **H2.** *(Exploratory; formed after seeing the Anima and Flux 3 data.)* Redistributing noise by the free predictor–corrector error, with the budget held equal, improves the trade-off when more noise goes where the error is low | **Partly supported** | Flux 3: `pce_m1` positive and `pce_p1` negative at all five budgets, all ten intervals exclude zero. MOSS-Image: same direction; the harmful sign is significant at 4 of 5 budgets, the helpful one at 1 of 5. Anima: not detectable. Needs confirmation on new samples and checkpoints |
 | **H3.** The earlier null result for error-driven noise control (`response` ≠ 0) was a confusion of *how much* and *where* | **Not shown on Anima**, where the null reproduces at equal budget; an effect appears on other models | See H2 |
 | **H4.** The allocation law is universal across flow-matching models | **Not supported** | The direction agrees where an effect is visible, but its size differs strongly between models |
-| **H5.** The texture gain is real detail rather than residual noise, and a person can perceive it | **Open** | Human study in progress; the latent-space texture metric alone cannot answer this |
-| **H6.** Online adaptation matters beyond a fixed non-uniform schedule (`static-profile`) | **Not tested** | The variant is not implemented |
+| **H5.** The texture gain is real detail rather than residual noise, and a person can perceive it | **Not supported at this sample size** | Human study, 39 respondents: the positive control (`eta` 1.4 vs 2.0) is detected (the stronger noise is called AI 61 % of the time, p = 0.001), but `pce_m1` is indistinguishable from `pce_p1` (50 %) and from uniform `eta` 1.7 (51 %). Only effects larger than roughly ±13 percentage points are excluded once image variability is counted |
+| **H6.** Online adaptation matters beyond a fixed non-uniform schedule (`static-profile`) | **In progress** | The variant is implemented (a per-step profile averaged over independent calibration runs, rescaled to the same budget); calibration and evaluation are running |
 
 ### Not done yet
 
-- Analysis of the human study (responses are still coming in).
 - The `static-profile` variant.
 - Other `eta_bar` values, stronger `exponent` (±2), other `spread` and `smoothing` settings.
 - Confirmation of H2 on fresh seeds and prompts, other Flux 3 / MOSS-Image checkpoints
@@ -376,8 +376,8 @@ Caveats specific to this result:
 - Texture is high-pass energy in latent space. It cannot tell real fine detail from residual
   noise, and noise placed late in the trajectory raises it too. A spot check of 15 NFE crops for
   two prompts and one seed showed no obvious grain for `pce_m1` against uniform `eta`, but a
-  spot check is not a test. The human forced-choice study listed under the secondary objective is
-  now the most informative next experiment.
+  spot check is not a test. The human study reported below found no perceptible difference between
+  `pce_m1` and uniform `eta`.
 - The geometry axis changed meaning (deviation from the same-budget deterministic run), and the
   checkpoint is probably step-distilled, so the frontier is built from a model whose response to
   `eta` is much flatter than Anima's (texture 0.7097 → 0.7274 over `eta` 1.4 → 2.0 at 10 NFE).
@@ -435,19 +435,61 @@ budgets (6, 8, 10, 12, 15 NFE):
 with a 95 % interval excluding zero on that side.) The direction is the same wherever an effect is visible, the size
 is strongly model-dependent, and on Anima it is not detectable at this sample size.
 
+### Human study
+
+**Design.** Two-alternative forced choice: "which of the two images is AI-generated?". All images
+are AI-generated, so the question measures which one *looks more* AI-generated. 24 side-by-side
+pairs from Flux 3 Klein at 15 NFE (prompts `face` and `fur`, four seeds), eight pairs per
+contrast, each variant on the left in four of the eight. Only the pair format was run; the
+single-image sets built by `build_survey.py` were not used. 39 respondents answered an anonymous
+multilingual online form recruited informally, without screening or attention checks.
+
+The table gives the share of answers that called the *first* variant AI (0.5 means no
+difference). "CI, respondents" resamples respondents only; "CI, respondents + images" also
+resamples the eight images of the contrast, which is the honest interval for the claim that the
+result holds for other images of the same kind.
+
+| Contrast | First variant | Share calling it AI | CI, respondents | CI, respondents + images | p (t-test, respondents) |
+| --- | --- | --- | --- | --- | --- |
+| `eta_control` | uniform `eta` 1.4 | 0.394 | [0.34, 0.45] | [0.27, 0.52] | 0.001 |
+| `texture_law` | `pce_m1` | 0.503 | [0.45, 0.55] | [0.36, 0.65] | 0.91 |
+| `claim` | `pce_m1` | 0.513 | [0.45, 0.58] | [0.39, 0.64] | 0.70 |
+
+**Reading.**
+
+- **The positive control works.** The image generated with uniform `eta` 2.0 is called AI in 61 %
+  of answers against `eta` 1.4. People notice a large difference in noise strength, so the
+  instrument is sensitive. More texture is read as *more* AI-like, not as more realistic.
+- **The main claim shows no difference.** `pce_m1` against `pce_p1` (`texture_law`) is 50 %, and
+  `pce_m1` against uniform `eta` 1.7 (`claim`) is 51 %. Their texture difference by the latent
+  metric is about 0.01, against about 0.04–0.1 for the control.
+- **Interim numbers at 19 respondents pointed elsewhere** (0.526 and 0.454) and moved to 0.5
+  when the sample doubled, a reminder that small-sample leanings in this design are noise.
+- **What is excluded.** With respondents only, effects above about 6 percentage points would be
+  visible; once the eight images per contrast are counted, only effects above about 13 points
+  are excluded. Smaller effects, including the roughly 1–2 % texture gain of `pce_m1`, cannot be
+  ruled in or out by this study.
+
+Caveats: informal sample without screening; eight images per contrast; a position bias (the
+second image was chosen in 63 % of answers, balanced by design); several free-text comments say
+that all images look AI-generated, so the question may be near a ceiling for these scenes;
+"looks AI" is not the same as "is preferred" or "has more real detail". The export of the form
+contained one response column beyond the 24 pairs, which was excluded from the analysis. The raw
+responses are not published because they contain free-text comments and timestamps; the
+analysis script (`analyze_survey.py`) and the summary (`results/survey_summary.csv`) are in the
+repository.
+
 ## Secondary objective
 
 - **Transfer to another flow-matching model.** Done for Flux 3 Klein (see above): the effect is
   not universal. MOSS-Image (a different architecture: 5B DiT, Qwen3.5-9B text encoder, shares
   only the FLUX.2 VAE) is also done; the direction of the `pc_error` effect agrees with
   Flux 3 but the size is much smaller.
-- **Metric validation against human judgement.** The image set and answer keys are prepared (see
-  [Human study materials](#human-study-materials)); responses are being collected and nothing
-  has been analysed yet. The
-  study asks which of two images looks AI-generated, to check that the custom geometry and
-  texture metrics agree with human perception, since all quantitative claims rest on them.
-  Given the Flux 3 result this is the priority: the question is whether the `pce_m1` texture
-  gain is something a person notices.
+- **Metric validation against human judgement.** Done with 39 respondents; see
+  [Human study](#human-study). The study asked which of two AI-generated images looks more
+  AI-generated. It validates the direction of the texture metric for large differences, and
+  finds no perceptible difference for the main claim. It does not show that the texture gain
+  is something people prefer, because preference was not asked.
 
 ## Known limitations
 
