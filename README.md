@@ -593,8 +593,9 @@ Iakov Savelev.
 
 ## Citation
 
-Preliminary results are not yet available. Please cite the earlier work (its authors are listed
-in the record below):
+To cite this work, use the "Cite this repository" entry on GitHub (see `CITATION.cff`); a
+preprint DOI will be added here when it exists. The earlier work this builds on is cited as
+follows (its authors are listed in the record):
 
 ```bibtex
 @software{savelev_yuzvynsky_2026_adaptivesamplers,

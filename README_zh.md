@@ -489,7 +489,8 @@ Iakov Savelev.
 
 ## 引用
 
-初步结果尚未作为出版物发布。请引用早期工作：
+引用本工作请使用 GitHub 上的“Cite this repository”（见 `CITATION.cff`）；预印本 DOI 出现后会补充在
+此处。本工作所基于的早期工作引用如下（作者见记录）：
 
 ```bibtex
 @software{savelev_yuzvynsky_2026_adaptivesamplers,
