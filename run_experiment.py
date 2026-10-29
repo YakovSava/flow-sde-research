@@ -29,8 +29,6 @@ OUTPUT: pathlib.Path = pathlib.Path("D:/ComfyUI/output")
 
 DEFAULT_SEEDS: list[int] = [42, 1337, 7, 2024, 31337, 99, 555, 8086]
 DEFAULT_BUDGETS: list[int] = [6, 8, 10, 12, 15]
-GEOMETRY_REFERENCE_STEPS: int = 100
-TEXTURE_REFERENCE_STEPS: int = 30
 ETA: float = 1.7
 FRONTIER: list[str] = ["uniform_e14", "uniform_e17", "uniform_e20"]
 
@@ -217,19 +215,19 @@ def plan_jobs(
             if not same_budget:
                 jobs.append(
                     Job(
-                        tag_for("ode", prompt, seed, GEOMETRY_REFERENCE_STEPS),
+                        tag_for("ode", prompt, seed, profile.geometry_steps),
                         prompt,
                         seed,
-                        GEOMETRY_REFERENCE_STEPS,
+                        profile.geometry_steps,
                         "ode",
                     )
                 )
             jobs.append(
                 Job(
-                    tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS),
+                    tag_for("sa_solver", prompt, seed, profile.texture_steps),
                     prompt,
                     seed,
-                    TEXTURE_REFERENCE_STEPS,
+                    profile.texture_steps,
                     "sa_solver",
                 )
             )
@@ -270,9 +268,9 @@ def collect(
     for prompt in prompts:
         for seed in seeds:
             same_budget = profile.geometry_reference == SAME_BUDGET
-            reference_steps = steps if same_budget else GEOMETRY_REFERENCE_STEPS
+            reference_steps = steps if same_budget else profile.geometry_steps
             reference = load_latent(tag_for("ode", prompt, seed, reference_steps), profile)
-            converged = load_latent(tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS), profile)
+            converged = load_latent(tag_for("sa_solver", prompt, seed, profile.texture_steps), profile)
             latents = {name: load_latent(tag_for(name, prompt, seed, steps), profile) for name in variants}
             if reference is None or converged is None or any(v is None for v in latents.values()):
                 continue

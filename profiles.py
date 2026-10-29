@@ -22,6 +22,44 @@ class Profile:
     scheduler: str
     prompts: dict[str, str]
     geometry_reference: str = CONVERGED
+    geometry_steps: int = 100
+    texture_steps: int = 30
+
+
+def krea_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
+    return {
+        "43": {
+            "class_type": "UNETLoader",
+            "inputs": {
+                "unet_name": "kromaKrea2_opd.safetensors",
+                "weight_dtype": "default",
+            },
+        },
+        "5": {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "flux3Klein_klein_txt_3299383.safetensors",
+                "type": "krea2",
+                "device": "default",
+            },
+        },
+        "37": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": prompt, "clip": ["5", 0]},
+        },
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "", "clip": ["5", 0]},
+        },
+        "50": {
+            "class_type": "EmptyLatentImage",
+            "inputs": {"width": profile.width, "height": profile.height, "batch_size": 1},
+        },
+        "28": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "qwenImage_qwenImageVAE.safetensors"},
+        },
+    }
 
 
 def anima_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
@@ -190,9 +228,27 @@ MOSS: Profile = Profile(
     prompts=FLUX3.prompts,
 )
 
-PROFILES: dict[str, Profile] = {ANIMA.name: ANIMA, FLUX3.name: FLUX3, MOSS.name: MOSS}
+KREA: Profile = Profile(
+    name="krea",
+    subdir="flow_sde_krea",
+    width=768,
+    height=1024,
+    cfg=5.0,
+    pool=8,
+    scheduler="normal",
+    prompts=FLUX3.prompts,
+    geometry_steps=50,
+)
+
+PROFILES: dict[str, Profile] = {
+    ANIMA.name: ANIMA,
+    FLUX3.name: FLUX3,
+    MOSS.name: MOSS,
+    KREA.name: KREA,
+}
 NODE_BUILDERS: dict[str, Any] = {
     ANIMA.name: anima_nodes,
     FLUX3.name: flux3_nodes,
     MOSS.name: moss_nodes,
+    KREA.name: krea_nodes,
 }

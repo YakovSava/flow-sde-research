@@ -10,15 +10,13 @@ from profiles import PROFILES, SAME_BUDGET, Profile
 from run_experiment import (
     DEFAULT_BUDGETS,
     FRONTIER,
-    GEOMETRY_REFERENCE_STEPS,
-    TEXTURE_REFERENCE_STEPS,
     VARIANTS,
     load_latent,
     tag_for,
 )
 
 SEEDS: list[int] = [42, 1337, 7, 2024]
-COMFYUI_VERSIONS: dict[str, str] = {"anima": "0.31.1", "flux3": "0.42.5", "moss": "0.42.5"}
+COMFYUI_VERSIONS: dict[str, str] = {"anima": "0.31.1", "flux3": "0.42.5", "moss": "0.42.5", "krea": "0.42.5"}
 SAMPLE_FIELDS: list[str] = [
     "model",
     "comfyui_version",
@@ -47,7 +45,7 @@ SUMMARY_FIELDS: list[str] = [
 
 
 def geometry_reference_for(profile: Profile, prompt: str, seed: int, steps: int) -> np.ndarray | None:
-    reference_steps = steps if profile.geometry_reference == SAME_BUDGET else GEOMETRY_REFERENCE_STEPS
+    reference_steps = steps if profile.geometry_reference == SAME_BUDGET else profile.geometry_steps
     return load_latent(tag_for("ode", prompt, seed, reference_steps), profile)
 
 
@@ -56,7 +54,7 @@ def sample_rows(profile: Profile) -> list[dict[str, Any]]:
     version = COMFYUI_VERSIONS[profile.name]
     for prompt in profile.prompts:
         for seed in SEEDS:
-            converged = load_latent(tag_for("sa_solver", prompt, seed, TEXTURE_REFERENCE_STEPS), profile)
+            converged = load_latent(tag_for("sa_solver", prompt, seed, profile.texture_steps), profile)
             target = None if converged is None else texture_energy(converged, profile.pool)
             for steps in DEFAULT_BUDGETS:
                 reference = geometry_reference_for(profile, prompt, seed, steps)
