@@ -237,7 +237,7 @@ KREA: Profile = Profile(
     pool=8,
     scheduler="normal",
     prompts=FLUX3.prompts,
-    geometry_steps=60,
+    geometry_reference=SAME_BUDGET,
 )
 
 PROFILES: dict[str, Profile] = {
