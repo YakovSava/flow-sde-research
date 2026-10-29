@@ -15,10 +15,14 @@ from run_experiment import (
     tag_for,
 )
 
-SEEDS: list[int] = [42, 1337, 7, 2024]
+COHORTS: dict[str, list[int]] = {
+    "main": [42, 1337, 7, 2024],
+    "confirm": [31337, 99, 555, 8086],
+}
 COMFYUI_VERSIONS: dict[str, str] = {"anima": "0.31.1", "flux3": "0.42.5", "moss": "0.42.5", "krea": "0.42.5"}
 SAMPLE_FIELDS: list[str] = [
     "model",
+    "cohort",
     "comfyui_version",
     "variant",
     "prompt",
@@ -31,6 +35,7 @@ SAMPLE_FIELDS: list[str] = [
 ]
 SUMMARY_FIELDS: list[str] = [
     "model",
+    "cohort",
     "comfyui_version",
     "nfe",
     "variant",
@@ -49,11 +54,11 @@ def geometry_reference_for(profile: Profile, prompt: str, seed: int, steps: int)
     return load_latent(tag_for("ode", prompt, seed, reference_steps), profile)
 
 
-def sample_rows(profile: Profile) -> list[dict[str, Any]]:
+def sample_rows(profile: Profile, cohort: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     version = COMFYUI_VERSIONS[profile.name]
     for prompt in profile.prompts:
-        for seed in SEEDS:
+        for seed in COHORTS[cohort]:
             converged = load_latent(tag_for("sa_solver", prompt, seed, profile.texture_steps), profile)
             target = None if converged is None else texture_energy(converged, profile.pool)
             for steps in DEFAULT_BUDGETS:
@@ -66,6 +71,7 @@ def sample_rows(profile: Profile) -> list[dict[str, Any]]:
                     rows.append(
                         {
                             "model": profile.name,
+                            "cohort": cohort,
                             "comfyui_version": version,
                             "variant": variant,
                             "prompt": prompt,
@@ -80,10 +86,14 @@ def sample_rows(profile: Profile) -> list[dict[str, Any]]:
     return rows
 
 
-def summary_rows(samples: list[dict[str, Any]], profile: Profile) -> list[dict[str, Any]]:
+def summary_rows(samples: list[dict[str, Any]], profile: Profile, cohort: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     version = COMFYUI_VERSIONS[profile.name]
-    mine = [row for row in samples if row["model"] == profile.name and row["geometry"] != ""]
+    mine = [
+        row
+        for row in samples
+        if row["model"] == profile.name and row["cohort"] == cohort and row["geometry"] != ""
+    ]
     for steps in DEFAULT_BUDGETS:
         at_budget = [row for row in mine if row["nfe"] == steps]
         counts = {name: sum(row["variant"] == name for row in at_budget) for name in VARIANTS}
@@ -117,6 +127,7 @@ def summary_rows(samples: list[dict[str, Any]], profile: Profile) -> list[dict[s
             rows.append(
                 {
                     "model": profile.name,
+                    "cohort": cohort,
                     "comfyui_version": version,
                     "nfe": steps,
                     "variant": variant,
@@ -125,8 +136,8 @@ def summary_rows(samples: list[dict[str, Any]], profile: Profile) -> list[dict[s
                     "texture_mean": float(texture[variant].mean()),
                     "texture_gap_mean": float(gap[variant].mean()) if gap[variant].size else "",
                     "frontier_advantage": "" if np.isnan(interval[0]) else interval[0],
-                    "frontier_ci_low": "" if np.isnan(interval[1]) else interval[1],
-                    "frontier_ci_high": "" if np.isnan(interval[2]) else interval[2],
+                    "frontier_ci_low": "" if np.isnan(interval[0]) else interval[1],
+                    "frontier_ci_high": "" if np.isnan(interval[0]) else interval[2],
                 }
             )
     return rows
@@ -148,10 +159,11 @@ def main() -> None:
     samples: list[dict[str, Any]] = []
     summary: list[dict[str, Any]] = []
     for profile in PROFILES.values():
-        profile_samples = sample_rows(profile)
-        samples.extend(profile_samples)
-        summary.extend(summary_rows(profile_samples, profile))
-        print(f"{profile.name}: {len(profile_samples)} sample rows")
+        for cohort in COHORTS:
+            profile_samples = sample_rows(profile, cohort)
+            samples.extend(profile_samples)
+            summary.extend(summary_rows(profile_samples, profile, cohort))
+            print(f"{profile.name}/{cohort}: {len(profile_samples)} sample rows")
 
     write_csv(arguments.output / "samples.csv", SAMPLE_FIELDS, samples)
     write_csv(arguments.output / "summary.csv", SUMMARY_FIELDS, summary)

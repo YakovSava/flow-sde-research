@@ -38,7 +38,7 @@ def krea_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
         "5": {
             "class_type": "CLIPLoader",
             "inputs": {
-                "clip_name": "flux3Klein_klein_txt_3299383.safetensors",
+                "clip_name": "qwen3vl_4b_bf16.safetensors",
                 "type": "krea2",
                 "device": "default",
             },
@@ -49,7 +49,7 @@ def krea_nodes(profile: Profile, prompt: str) -> dict[str, Any]:
         },
         "6": {
             "class_type": "CLIPTextEncode",
-            "inputs": {"text": "", "clip": ["5", 0]},
+            "inputs": {"text": "worst quality, low quality,", "clip": ["5", 0]},
         },
         "50": {
             "class_type": "EmptyLatentImage",
@@ -231,13 +231,13 @@ MOSS: Profile = Profile(
 KREA: Profile = Profile(
     name="krea",
     subdir="flow_sde_krea",
-    width=768,
-    height=1024,
-    cfg=5.0,
+    width=1216,
+    height=832,
+    cfg=8.0,
     pool=8,
     scheduler="normal",
     prompts=FLUX3.prompts,
-    geometry_steps=50,
+    geometry_steps=60,
 )
 
 PROFILES: dict[str, Profile] = {
