@@ -8,13 +8,13 @@ if they disagree, the English text is authoritative.
 > **Status: work in progress.** The sampler is implemented, unit-tested, and verified to
 > reproduce `sa_solver` bit-for-bit through ComfyUI. Three models have been measured (Anima,
 > Flux 3 Klein, MOSS-Image). Curvature-driven allocation shows **no stable effect on any of
-> them**. Error-driven allocation (`signal = pc_error`) shows nothing on Anima, a sign-consistent
-> effect on Flux 3, and a one-sided effect on MOSS-Image (the wrong sign hurts, the right sign
-> helps little). A human study (39 respondents) confirms that people see large differences in
-> noise strength but finds **no perceptible difference** between the error-driven allocation and
-> uniform noise. The static-profile control experiment is in progress. See
-> [Goals, hypotheses and outcomes](#goals-hypotheses-and-outcomes) for a one-page overview and
-> [Preliminary results](#preliminary-results) for the numbers. Everything else below is a
+> them**. Error-driven allocation (`signal = pc_error`) shows nothing on Anima, a one-sided effect
+> on MOSS-Image, and on Flux 3 an effect that **held up on fresh seeds**. A fixed per-step noise
+> schedule reproduces it, so online adaptation is not what matters; where the noise goes is. A
+> human study (39 respondents) shows that people see large differences in noise strength but
+> finds **no perceptible difference** between the error-driven allocation and uniform noise.
+> See [Goals, hypotheses and outcomes](#goals-hypotheses-and-outcomes) for a one-page overview
+> and [Preliminary results](#preliminary-results) for the numbers. Everything else below is a
 > hypothesis, a protocol, or a plan, and numbers quoted from earlier work are labelled as such.
 
 Research on controlling the strength of stochasticity (`eta`) in SDE samplers [1] for
@@ -42,7 +42,7 @@ done and measured.*
 | Goal | Outcome |
 | --- | --- |
 | **Primary.** Build a Flow-SDE sampler whose noise strength comes from free local signals instead of a constant, and compare it with `sa_solver` at 6–15 NFE | **Done.** The `Flow-SDE Sampler` node costs 1 NFE per step, reproduces `sa_solver` bit-for-bit when adaptation is off, and has 151 unit tests. It was compared on three models at five budgets with 16 paired samples each |
-| **Does it give a better geometry/texture trade-off?** | **Depends on the model and the signal.** No for curvature. A small gain for `pc_error` on Flux 3 Klein, a one-sided effect on MOSS-Image, nothing detectable on Anima |
+| **Does it give a better geometry/texture trade-off?** | **Depends on the model and the signal.** No for curvature. A small gain (1–2 % of the texture value) for `pc_error` on Flux 3 Klein, confirmed on fresh seeds and reproducible with a fixed schedule, a one-sided effect on MOSS-Image, nothing detectable on Anima |
 | **Secondary A.** Check whether the law transfers to other flow-matching models | **Done** for Flux 3 Klein and MOSS-Image. The effect is not universal |
 | **Secondary B.** Check the custom metrics against human judgement | **Done (null result for the main claim).** 39 respondents. The texture metric points the same way as human judgement for a large noise difference, but humans see no difference for the error-driven allocation. See [Human study](#human-study) |
 
@@ -51,18 +51,19 @@ done and measured.*
 | Hypothesis | Verdict | Evidence |
 | --- | --- | --- |
 | **H1.** Redistributing a fixed noise budget by local curvature improves the geometry/texture trade-off | **Not supported** | 30 comparisons (2 directions × 5 budgets × 3 models). Some intervals exclude zero (1 on Anima, 8 on Flux 3, 3 on MOSS-Image) but the sign depends on the budget, so no single direction helps |
-| **H2.** *(Exploratory; formed after seeing the Anima and Flux 3 data.)* Redistributing noise by the free predictor–corrector error, with the budget held equal, improves the trade-off when more noise goes where the error is low | **Partly supported** | Flux 3: `pce_m1` positive and `pce_p1` negative at all five budgets, all ten intervals exclude zero. MOSS-Image: same direction; the harmful sign is significant at 4 of 5 budgets, the helpful one at 1 of 5. Anima: not detectable. Needs confirmation on new samples and checkpoints |
+| **H2.** *(Exploratory; formed after seeing the Anima and Flux 3 data.)* Redistributing noise by the free predictor–corrector error, with the budget held equal, improves the trade-off when more noise goes where the error is low | **Supported on Flux 3 (confirmed on fresh seeds); partly on MOSS-Image; not detectable on Anima** | Flux 3, original seeds: `pce_m1` positive and `pce_p1` negative at all five budgets. Fresh seeds, criteria set in advance: both hold at all five budgets (one interval, `pce_m1` at 15 NFE, has a lower bound within 0.0003 of zero). MOSS-Image: same direction, the harmful sign significant at 4 of 5 budgets. Effect size about 1–2 % of the texture value |
 | **H3.** The earlier null result for error-driven noise control (`response` ≠ 0) was a confusion of *how much* and *where* | **Not shown on Anima**, where the null reproduces at equal budget; an effect appears on other models | See H2 |
 | **H4.** The allocation law is universal across flow-matching models | **Not supported** | The direction agrees where an effect is visible, but its size differs strongly between models |
 | **H5.** The texture gain is real detail rather than residual noise, and a person can perceive it | **Not supported at this sample size** | Human study, 39 respondents: the positive control (`eta` 1.4 vs 2.0) is detected (the stronger noise is called AI 61 % of the time, p = 0.001), but `pce_m1` is indistinguishable from `pce_p1` (50 %) and from uniform `eta` 1.7 (51 %). Only effects larger than roughly ±13 percentage points are excluded once image variability is counted |
-| **H6.** Online adaptation matters beyond a fixed non-uniform schedule (`static-profile`) | **In progress** | The variant is implemented (a per-step profile averaged over independent calibration runs, rescaled to the same budget); calibration and evaluation are running |
+| **H6.** Online adaptation matters beyond a fixed non-uniform schedule (`static-profile`) | **Not supported: a fixed schedule is enough (tested on Flux 3 only)** | `static_pce`, a per-step profile averaged over independent calibration runs, matches `pce_m1` within 0.0006 at every budget on the original seeds and within 0.0021 on fresh seeds, inside the confidence intervals. The profile puts more noise at the two ends of the noise window and less in the middle |
 
 ### Not done yet
 
-- The `static-profile` variant.
 - Other `eta_bar` values, stronger `exponent` (±2), other `spread` and `smoothing` settings.
-- Confirmation of H2 on fresh seeds and prompts, other Flux 3 / MOSS-Image checkpoints
-  (bf16, base), and with correction for multiple comparisons.
+- Confirmation of H2 and H6 on other models and checkpoints (bf16, base), with correction for
+  multiple comparisons.
+- Separating how much of the fixed schedule's gain comes from the first noised step and how much
+  from the last (the last step absorbs the budget remainder).
 - The reason why stochastic samplers produce a different noise realisation for the same seed
   after the ComfyUI upgrade from 0.31.1 to 0.42.5.
 
@@ -133,7 +134,7 @@ All variants are settings of the single `Flow-SDE Sampler` node (`signal`, `expo
 | `curvature-online` | `signal = curvature`, `exponent > 0` (more noise on stiff steps) |
 | `curvature-online, inverted` | `signal = curvature`, `exponent < 0` (more noise on smooth steps) |
 | `pc-error-online` | `signal = pc_error`, for reference against the earlier negative result |
-| `static-profile` | Non-uniform `tau` schedule from the mean curvature profile, fixed across samples. **Not implemented yet** |
+| `static-profile` | Implemented as `static_pce`: the per-step noise power of `pce_m1` averaged over independent calibration runs (seeds 101–104), rescaled to the same budget, and applied unchanged to every sample. See [Fixed schedule](#fixed-schedule-and-confirmation-flux-3-klein) |
 
 `static-profile` isolates whether *online* adaptation matters at all, or whether a fixed
 non-uniform schedule already captures the effect. The previous variance decomposition
@@ -432,6 +433,44 @@ the five budgets. It counts as a confirmation that a fixed schedule is enough (H
 `static_pce` is not worse than `pce_m1` by more than the half-width of the `pce_m1` interval at
 the same budget at at least four of the five budgets. Anything else is reported as a failure to
 confirm.
+
+### Fixed schedule and confirmation (Flux 3 Klein)
+
+**Static profile.** For each budget, the per-step noise power of `pce_m1` was recorded on
+independent calibration runs (four prompt classes × seeds 101–104, none used elsewhere),
+averaged per step, rescaled to the same total budget and then applied unchanged to every sample
+as `static_pce`. Relative noise power on the active steps (1.0 = mean): 10 NFE
+1.01, 0.81, 0.82, 0.82, 0.93, 1.60; 15 NFE 1.53, 0.62, 0.81, 0.82, 0.88, 0.89, 0.93, 1.01, 1.50.
+The online method turns out to be a fixed U-shaped schedule: more noise at both ends of the noise
+window, less in the middle. The peak on the last step is partly produced by the budget-conservation
+rule (the last window step absorbs the remainder), so the shape is a property of `pce_m1` together
+with that rule.
+
+**Confirmation.** The pre-specified criteria above were evaluated on seeds 31337, 99, 555 and 8086
+(16 pairs, 5 budgets; one interrupted job was re-run). Texture advantage over the uniform
+frontier, with 95 % bootstrap intervals; `*` marks an interval that excludes zero:
+
+| Variant | 6 NFE | 8 NFE | 10 NFE | 12 NFE | 15 NFE |
+| --- | --- | --- | --- | --- | --- |
+| `pce_m1`, new seeds | +0.0050 [+0.0036, +0.0067] * | +0.0055 [+0.0032, +0.0086] * | +0.0116 [+0.0089, +0.0141] * | +0.0083 [+0.0053, +0.0114] * | +0.0040 [+0.0001, +0.0081] * |
+| `pce_p1`, new seeds | −0.0020 [−0.0028, −0.0012] * | −0.0040 [−0.0074, −0.0015] * | −0.0128 [−0.0165, −0.0085] * | −0.0106 [−0.0130, −0.0085] * | −0.0098 [−0.0144, −0.0057] * |
+| `static_pce`, new seeds | +0.0045 [+0.0034, +0.0056] * | +0.0052 [+0.0032, +0.0079] * | +0.0117 [+0.0089, +0.0143] * | +0.0078 [+0.0048, +0.0107] * | +0.0061 [+0.0013, +0.0114] * |
+| `static_pce`, original seeds | +0.0042 [+0.0033, +0.0049] * | +0.0043 [+0.0036, +0.0050] * | +0.0094 [+0.0069, +0.0115] * | +0.0044 [+0.0020, +0.0066] * | +0.0116 [+0.0066, +0.0162] * |
+
+**Reading.**
+
+- **H2 is confirmed on Flux 3.** `pce_m1` is positive and `pce_p1` is negative at all five budgets
+  on seeds not used before, so the criterion (at least four of five) is met. The one soft spot is
+  `pce_m1` at 15 NFE: its lower bound is +0.0001 in this table and −0.0002 with another
+  bootstrap seed, so that single interval should be read as touching zero.
+- **H6 is confirmed on Flux 3.** The difference `static_pce` − `pce_m1` is between −0.0005 and
+  +0.0021 on the new seeds, always within the interval half-width of `pce_m1`, so the criterion is
+  met at five of five budgets. Online adaptation is not needed to obtain the gain on this model.
+- **Interpretation.** The effect is about where noise is injected, as originally hypothesised,
+  but it is a fixed pattern, not a response to the local trajectory. It was found only on Flux 3,
+  and it was not tested whether the same profile helps MOSS-Image or Anima.
+- **Size.** 0.004–0.012 texture units, 1–2 % of the texture value, and the human study found no
+  perceptible difference at this size.
 
 ### Across models
 
