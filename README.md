@@ -43,7 +43,7 @@ done and measured.*
 | --- | --- |
 | **Primary.** Build a Flow-SDE sampler whose noise strength comes from free local signals instead of a constant, and compare it with `sa_solver` at 6–15 NFE | **Done.** The `Flow-SDE Sampler` node costs 1 NFE per step, reproduces `sa_solver` bit-for-bit when adaptation is off, and has 151 unit tests. It was compared on three models at five budgets with 16 paired samples each |
 | **Does it give a better geometry/texture trade-off?** | **Depends on the model and the signal.** No for curvature. A small gain (1–2 % of the texture value) for `pc_error` on Flux 3 Klein, confirmed on fresh seeds and reproducible with a fixed schedule, a one-sided effect on MOSS-Image, nothing detectable on Anima |
-| **Secondary A.** Check whether the law transfers to other flow-matching models | **Done** for Flux 3 Klein and MOSS-Image. The effect is not universal |
+| **Secondary A.** Check whether the law transfers to other flow-matching models | **Done** for Flux 3 Klein and MOSS-Image: the effect is not universal. A small exploratory run on Krea 2 was inconclusive (underpowered) |
 | **Secondary B.** Check the custom metrics against human judgement | **Done (null result for the main claim).** 39 respondents. The texture metric points the same way as human judgement for a large noise difference, but humans see no difference for the error-driven allocation. See [Human study](#human-study) |
 
 ### Hypotheses
@@ -471,6 +471,35 @@ frontier, with 95 % bootstrap intervals; `*` marks an interval that excludes zer
   and it was not tested whether the same profile helps MOSS-Image or Anima.
 - **Size.** 0.004–0.012 texture units, 1–2 % of the texture value, and the human study found no
   perceptible difference at this size.
+
+### Krea 2 (exploratory)
+
+Setup: Kroma Krea 2 OPD, a non-distilled 12B-parameter int8 checkpoint, Qwen3-VL-4B text encoder,
+Qwen-Image VAE, 1216×832, cfg 8.0, negative prompt `worst quality, low quality,`, `normal`
+scheduler, ComfyUI 0.42.5. At about 5 s per step the full design was unaffordable, so it was cut
+to two prompt classes (`face`, `fur`) × four seeds = 8 pairs and two budgets (8 and 12 NFE). The
+`euler` run does not converge by 60 steps (pooled distance between 30 and 60 steps 0.92 and 0.82,
+comparable to unrelated images), so geometry is measured against the same-budget `euler` run as
+for Flux 3. The static profile was calibrated on seeds 101–104. Nothing here was pre-specified.
+
+Texture advantage over the uniform frontier (95 % bootstrap interval); `n/a` means the variant's
+geometry fell outside the range spanned by the uniform runs:
+
+| Variant | 8 NFE | 12 NFE |
+| --- | --- | --- |
+| `pce_m1` | −0.0186 [−0.0650, +0.0293] | n/a |
+| `pce_p1` | −0.0216 [−0.0432, +0.0183] | +0.0210 [−0.0088, +0.0555] |
+| `static_pce` | +0.0068 [−0.0220, +0.0314] | n/a |
+
+**Reading.** No effect can be seen and none can be excluded. Every interval contains zero and is
+0.03–0.06 wide, five to ten times the effect sizes seen on Flux 3 (0.004–0.012), so the run could
+not have detected an effect of that size. At 12 NFE two of the three variants of interest left the
+range of the frontier and could not be scored at all. The deviation from the deterministic run is
+also much larger here (geometry 1.6–2.2 against about 0.4 on Flux 3), which suggests that 8–12
+steps is far from this model's intended regime (the vendor's base model uses about 50 steps).
+Resolving a Flux-sized effect would need roughly thirty times more pairs, which is about 70 hours
+of GPU time on this machine. The question of whether the fixed U-shaped schedule helps on a
+non-distilled 12B model is therefore left open.
 
 ### Across models
 
