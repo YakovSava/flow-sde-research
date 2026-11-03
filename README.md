@@ -636,6 +636,10 @@ follows (its authors are listed in the record):
     <https://github.com/OpenMOSS/MOSS-Image>
 12. ComfyUI. <https://github.com/comfyanonymous/ComfyUI>
 
+## Special Thanks
+
+- Muratbay Aslan
+
 References 1–8 are the literature the method and the statistics build on. References 9–12 are
 the earlier work, the two checkpoints and the software used in the experiments. The Anima
 checkpoint is not listed: no citable source has been added yet.
